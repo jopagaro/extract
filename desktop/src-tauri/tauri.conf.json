@@ -1,0 +1,24 @@
+{
+  "package": {
+    "productName": "Mining Intelligence Platform",
+    "version": "0.1.0"
+  },
+  "build": {
+    "beforeDevCommand": "pnpm --filter web dev",
+    "beforeBuildCommand": "pnpm --filter web build",
+    "devPath": "http://localhost:5173",
+    "distDir": "../web/dist"
+  },
+  "tauri": {
+    "windows": [
+      {
+        "title": "Mining Intelligence Platform",
+        "width": 1400,
+        "height": 900
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

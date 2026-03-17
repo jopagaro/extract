@@ -1,0 +1,36 @@
+# OpenAI provider configuration
+
+default_model: gpt-4o
+
+models:
+  # Primary — complex extraction, economics analysis, report writing
+  primary:
+    id: gpt-4o
+    context_window: 128000
+    max_output_tokens: 4096
+
+  # Fast — quick summarization, simple classification, cheap tasks
+  fast:
+    id: gpt-4o-mini
+    context_window: 128000
+    max_output_tokens: 4096
+
+  # Reasoning — multi-step analysis (expensive, use sparingly)
+  reasoning:
+    id: o1
+    context_window: 128000
+    max_output_tokens: 8192
+
+# Per-task model assignments (overrides default_model)
+task_models:
+  extraction: primary
+  summarization: primary
+  reporting: primary
+  critique: primary
+  scoring: fast
+
+# API settings
+temperature: 0.1
+request_timeout_seconds: 120
+max_retries: 3
+retry_delay_seconds: 2

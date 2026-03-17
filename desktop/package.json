@@ -1,0 +1,14 @@
+{
+  "name": "mining-intelligence-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^1"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^1"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Breakeven Analysis",
+  "description": "Stub \u2014 to be defined.",
+  "type": "object",
+  "properties": {}
+}

@@ -1,0 +1,33 @@
+# Prompt assembly policies
+
+# Always load base_system.md first, then the role prompt, then the task prompt
+# Order matters — base constraints must be established before role context
+prompt_layer_order:
+  - base
+  - role
+  - task
+
+# Maximum total characters to allow in the assembled prompt before truncating context
+# This is a safety limit — actual model context windows are set per model in openai/anthropic yaml
+max_prompt_chars: 400000
+
+# Whether to include the data assessments from the last critique run
+# as additional context when generating reports
+include_prior_assessments_in_reports: true
+
+# Whether the LLM is allowed to refuse a task if data is too sparse
+# If true, the critic can return a structured "insufficient data" response
+allow_insufficient_data_response: true
+
+# Compliance: these phrases must never appear in any LLM output.
+# The critique pass checks for these and flags them.
+prohibited_phrases:
+  - "buy this stock"
+  - "sell this stock"
+  - "investment opportunity"
+  - "will outperform"
+  - "strong buy"
+  - "price target"
+  - "upside potential"
+  - "recommend purchasing"
+  - "compelling investment"

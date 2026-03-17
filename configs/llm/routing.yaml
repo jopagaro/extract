@@ -1,0 +1,16 @@
+# LLM routing — which provider handles which task
+#
+# Strategy options:
+#   prefer_anthropic  — use Anthropic, fall back to OpenAI if key missing
+#   prefer_openai     — use OpenAI, fall back to Anthropic if key missing
+#   anthropic_only    — only use Anthropic, raise error if key missing
+#   openai_only       — only use OpenAI, raise error if key missing
+
+default_strategy: prefer_anthropic
+
+task_routing:
+  extraction:     prefer_anthropic   # Claude handles long docs well
+  summarization:  prefer_anthropic
+  reporting:      prefer_anthropic   # Best prose quality
+  critique:       prefer_anthropic   # Best at careful reasoning
+  scoring:        prefer_openai      # Either works, OpenAI fast models cheaper

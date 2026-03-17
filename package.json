@@ -1,0 +1,10 @@
+{
+  "name": "mining-intelligence-platform",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter web build",
+    "desktop": "pnpm --filter desktop tauri dev"
+  }
+}

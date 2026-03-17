@@ -1,0 +1,36 @@
+# Anthropic provider configuration
+
+default_model: claude-sonnet-4-6
+
+models:
+  # Primary — best reasoning, complex analysis, long documents
+  primary:
+    id: claude-opus-4-6
+    context_window: 200000
+    max_output_tokens: 4096
+
+  # Standard — strong performance, most tasks
+  standard:
+    id: claude-sonnet-4-6
+    context_window: 200000
+    max_output_tokens: 4096
+
+  # Fast — cheap tasks, short outputs
+  fast:
+    id: claude-haiku-4-5-20251001
+    context_window: 200000
+    max_output_tokens: 4096
+
+# Per-task model assignments
+task_models:
+  extraction: standard
+  summarization: standard
+  reporting: primary
+  critique: primary
+  scoring: fast
+
+# API settings
+temperature: 0.1
+request_timeout_seconds: 120
+max_retries: 3
+retry_delay_seconds: 2

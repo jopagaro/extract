@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Data Assessment",
+  "description": "Qualitative assessment of a data field or dataset. Replaces numeric confidence scores. Each assessment is a plain English paragraph explaining what is known, what is missing, and what it means for project economics.",
+  "type": "object",
+  "required": ["field", "status", "economic_direction", "assessment"],
+  "properties": {
+    "field": {
+      "type": "string",
+      "description": "Dot-notation path to the data field or dataset being assessed. e.g. gis.infrastructure.roads"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["present", "partial", "missing", "conflicting", "unverifiable"],
+      "description": "Whether the data exists and is usable."
+    },
+    "economic_direction": {
+      "type": "string",
+      "enum": ["positive", "negative", "neutral", "mixed"],
+      "description": "Whether the state of this data is a positive or negative factor for project economics. positive = supports the economics. negative = hurts or creates risk. neutral = no material economic impact. mixed = depends on further information."
+    },
+    "assessment": {
+      "type": "string",
+      "description": "A plain English paragraph explaining the data, its current state, and what it means for the project. Must be written in the same neutral technical tone as the rest of the report. Must not speculate beyond what the data supports. Must not use numeric scores."
+    },
+    "impacts": {
+      "type": "array",
+      "description": "Optional list of specific model outputs that are affected by this data gap or data quality issue.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "recommended_action": {
+      "type": "string",
+      "description": "Optional. What should be done to resolve this gap or confirm this data. Written as a practical instruction for the analyst or engineer."
+    },
+    "source": {
+      "type": ["string", "null"],
+      "description": "Where this data was found, if present. Null if missing."
+    },
+    "assessed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": false
+}
