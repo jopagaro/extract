@@ -1,6 +1,16 @@
-"""FastAPI application entry point."""
+"""
+Mining Intelligence Platform — FastAPI application entry point.
+
+Start the server:
+    uvicorn api.main:app --reload --port 8000
+
+Interactive docs at: http://localhost:8000/docs
+"""
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from api.routers import analyze, export, ingest, projects, reports
 
 app = FastAPI(
     title="Mining Intelligence Platform API",
@@ -8,6 +18,24 @@ app = FastAPI(
     description="Internal API — not for public access.",
 )
 
-@app.get("/health")
+# Allow the React dev server and Tauri window to call this API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:1420", "tauri://localhost"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Register all routers
+app.include_router(projects.router)
+app.include_router(ingest.router)
+app.include_router(analyze.router)
+app.include_router(reports.router)
+app.include_router(export.router)
+
+
+@app.get("/health", tags=["meta"])
 def health() -> dict:
-    return {"status": "ok"}
+    """Liveness check — returns ok when the server is running."""
+    return {"status": "ok", "version": "0.1.0"}

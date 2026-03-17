@@ -1,24 +1,44 @@
 {
   "package": {
-    "productName": "Mining Intelligence Platform",
+    "productName": "Mining Intelligence",
     "version": "0.1.0"
   },
   "build": {
     "beforeDevCommand": "pnpm --filter web dev",
     "beforeBuildCommand": "pnpm --filter web build",
     "devPath": "http://localhost:5173",
-    "distDir": "../web/dist"
+    "distDir": "../../web/dist"
   },
   "tauri": {
+    "allowlist": {
+      "all": false,
+      "window": {
+        "all": true
+      }
+    },
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "com.miningplatform.app",
+      "icon": [],
+      "macOS": {
+        "minimumSystemVersion": "11.0"
+      }
+    },
+    "security": {
+      "csp": "default-src 'self' http://localhost:8000; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    },
     "windows": [
       {
-        "title": "Mining Intelligence Platform",
+        "title": "Mining Intelligence",
         "width": 1400,
-        "height": 900
+        "height": 900,
+        "minWidth": 1000,
+        "minHeight": 650,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true
       }
-    ],
-    "security": {
-      "csp": null
-    }
+    ]
   }
 }

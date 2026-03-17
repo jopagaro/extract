@@ -15,3 +15,16 @@ build/
 projects/
 *.parquet
 *.db
+
+# Rust build artifacts
+desktop/src-tauri/target/
+
+# Built web assets
+web/dist/
+
+# tsc output files alongside tsx sources (noEmit should prevent these but just in case)
+web/src/**/*.js
+web/vite.config.js
+
+# pnpm lockfile (managed at workspace level)
+pnpm-lock.yaml
