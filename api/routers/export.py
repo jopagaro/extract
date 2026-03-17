@@ -5,11 +5,14 @@ Endpoints:
   GET /projects/{project_id}/reports/{run_id}/export?format=json
   GET /projects/{project_id}/reports/{run_id}/export?format=md
   GET /projects/{project_id}/reports/{run_id}/export?format=txt
+  GET /projects/{project_id}/reports/{run_id}/export?format=pdf
 """
 
 from __future__ import annotations
 
+import io
 import json
+import re
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -44,50 +47,25 @@ def _get_all_sections(project_id: str, run_id: str) -> dict[str, object]:
     return sections
 
 
-def _sections_to_markdown(project_id: str, run_id: str, sections: dict) -> str:
-    """Convert structured JSON sections into a clean Markdown document."""
-    lines = [
-        f"# Mining Project Analysis Report",
-        f"",
-        f"**Project:** {project_id}  ",
-        f"**Run ID:** {run_id}  ",
-        f"**Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
-        f"",
-        f"---",
-        f"",
-    ]
-
-    section_titles = {
-        "project_facts": "Project Facts",
-        "geology_summary": "Geology",
-        "economics_summary": "Economics",
-        "risk_summary": "Risks",
-        "permitting_summary": "Permitting",
-        "financing_risk": "Financing Risk",
-        "contradictions": "Internal Contradictions",
-        "missing_data": "Data Gaps",
-        "assumptions": "Assumption Challenges",
-        "geology_score": "Geology Score",
-        "economics_score": "Economics Score",
-        "financing_score": "Financing Score",
-        "permitting_score": "Permitting Score",
-        "overall_score": "Overall Project Score",
-    }
-
-    for section_key, content in sections.items():
-        title = section_titles.get(section_key, section_key.replace("_", " ").title())
-        lines.append(f"## {title}")
-        lines.append("")
-        lines.append(_format_section(content))
-        lines.append("")
-        lines.append("---")
-        lines.append("")
-
-    return "\n".join(lines)
+SECTION_TITLES = {
+    "project_facts": "Project Facts",
+    "geology_summary": "Geology",
+    "economics_summary": "Economics",
+    "risk_summary": "Risks",
+    "permitting_summary": "Permitting",
+    "financing_risk": "Financing Risk",
+    "contradictions": "Internal Contradictions",
+    "missing_data": "Data Gaps",
+    "assumptions": "Assumption Challenges",
+    "geology_score": "Geology Score",
+    "economics_score": "Economics Score",
+    "financing_score": "Financing Score",
+    "permitting_score": "Permitting Score",
+    "overall_score": "Overall Project Score",
+}
 
 
 def _format_section(content: object, indent: int = 0) -> str:
-    """Recursively format a JSON structure as readable Markdown."""
     pad = "  " * indent
     if isinstance(content, dict):
         parts = []
@@ -114,23 +92,170 @@ def _format_section(content: object, indent: int = 0) -> str:
         return f"{pad}{content}"
 
 
+def _sections_to_markdown(project_id: str, run_id: str, sections: dict) -> str:
+    lines = [
+        "# Mining Project Analysis Report",
+        "",
+        f"**Project:** {project_id}  ",
+        f"**Run ID:** {run_id}  ",
+        f"**Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+        "",
+        "---",
+        "",
+    ]
+    for section_key, content in sections.items():
+        title = SECTION_TITLES.get(section_key, section_key.replace("_", " ").title())
+        lines.append(f"## {title}")
+        lines.append("")
+        lines.append(_format_section(content))
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _flatten_for_pdf(content: object, lines: list[str], indent: int = 0) -> None:
+    """Recursively flatten content into plain text lines for PDF."""
+    pad = "  " * indent
+    if isinstance(content, dict):
+        for k, v in content.items():
+            label = k.replace("_", " ").title()
+            if isinstance(v, (dict, list)):
+                lines.append(f"{pad}{label}:")
+                _flatten_for_pdf(v, lines, indent + 1)
+            else:
+                lines.append(f"{pad}{label}: {v}")
+    elif isinstance(content, list):
+        for item in content:
+            if isinstance(item, dict):
+                _flatten_for_pdf(item, lines, indent)
+            else:
+                lines.append(f"{pad}• {item}")
+    else:
+        lines.append(f"{pad}{content}")
+
+
+def _safe(text: str) -> str:
+    """Replace Unicode characters that Helvetica (Latin-1) can't encode."""
+    replacements = {
+        "\u2014": "-", "\u2013": "-", "\u2012": "-",  # dashes
+        "\u2018": "'", "\u2019": "'",                   # smart single quotes
+        "\u201c": '"', "\u201d": '"',                   # smart double quotes
+        "\u2022": "*", "\u2026": "...",                  # bullet, ellipsis
+        "\u00b0": "deg", "\u00b2": "2", "\u00b3": "3",  # degree, superscripts
+    }
+    for char, replacement in replacements.items():
+        text = text.replace(char, replacement)
+    return text.encode("latin-1", errors="replace").decode("latin-1")
+
+
+def _generate_pdf(project_id: str, run_id: str, sections: dict) -> bytes:
+    from fpdf import FPDF
+
+    class ReportPDF(FPDF):
+        def header(self):
+            self.set_font("Helvetica", "B", 9)
+            self.set_text_color(110, 110, 115)
+            self.cell(0, 8, "Mining Intelligence Platform - Confidential", align="L")
+            self.set_text_color(110, 110, 115)
+            self.cell(0, 0, f"Page {self.page_no()}", align="R")
+            self.ln(4)
+            self.set_draw_color(220, 220, 220)
+            self.line(10, self.get_y(), 200, self.get_y())
+            self.ln(4)
+
+        def footer(self):
+            self.set_y(-15)
+            self.set_font("Helvetica", "I", 8)
+            self.set_text_color(174, 174, 178)
+            self.cell(0, 10, "For internal research purposes only. Not investment advice.", align="C")
+
+    pdf = ReportPDF()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+    pdf.set_margins(15, 15, 15)
+
+    # Title
+    pdf.set_font("Helvetica", "B", 22)
+    pdf.set_text_color(29, 29, 31)
+    pdf.ln(4)
+    pdf.cell(0, 12, "Mining Project Analysis Report", ln=True)
+
+    # Meta
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(110, 110, 115)
+    pdf.cell(0, 6, _safe(f"Project: {project_id.replace('_', ' ').title()}"), ln=True)
+    pdf.cell(0, 6, _safe(f"Run ID: {run_id}"), ln=True)
+    pdf.cell(0, 6, _safe(f"Generated: {datetime.now(timezone.utc).strftime('%B %d, %Y at %H:%M UTC')}"), ln=True)
+    pdf.ln(4)
+
+    # Disclaimer box
+    pdf.set_fill_color(232, 241, 251)
+    pdf.set_draw_color(0, 113, 227)
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.set_text_color(0, 71, 171)
+    pdf.set_left_margin(15)
+    pdf.multi_cell(
+        0, 5,
+        "This report is generated by an AI system for internal research purposes only. "
+        "It does not constitute investment advice or a formal technical study. "
+        "All figures should be verified against primary source documents.",
+        border="L", fill=True
+    )
+    pdf.ln(6)
+
+    # Sections
+    for section_key, content in sections.items():
+        title = SECTION_TITLES.get(section_key, section_key.replace("_", " ").title())
+
+        # Section heading
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.set_text_color(29, 29, 31)
+        pdf.set_fill_color(245, 245, 247)
+        pdf.cell(0, 9, _safe(title), ln=True, fill=True)
+        pdf.ln(1)
+
+        # Section content
+        flat_lines: list[str] = []
+        _flatten_for_pdf(content, flat_lines)
+
+        pdf.set_font("Helvetica", "", 9.5)
+        pdf.set_text_color(45, 45, 48)
+        for line in flat_lines:
+            line = _safe(str(line))
+            if not line.strip():
+                pdf.ln(2)
+                continue
+            if ":" in line and not line.strip().startswith("*"):
+                colon_pos = line.index(":")
+                label_part = line[:colon_pos + 1]
+                value_part = line[colon_pos + 1:]
+                pdf.set_font("Helvetica", "B", 9.5)
+                pdf.write(5, label_part)
+                pdf.set_font("Helvetica", "", 9.5)
+                pdf.write(5, value_part)
+                pdf.ln(5)
+            else:
+                pdf.multi_cell(0, 5, line)
+
+        pdf.ln(5)
+        pdf.set_draw_color(220, 220, 220)
+        pdf.line(15, pdf.get_y(), 195, pdf.get_y())
+        pdf.ln(5)
+
+    return bytes(pdf.output())
+
+
 # ---------------------------------------------------------------------------
-# Routes
+# Route
 # ---------------------------------------------------------------------------
 
 @router.get("/projects/{project_id}/reports/{run_id}/export")
 def export_report(
     project_id: str,
     run_id: str,
-    format: Literal["json", "md", "txt"] = Query("md", description="Export format: json, md, or txt"),
+    format: Literal["json", "md", "txt", "pdf"] = Query("pdf", description="Export format"),
 ) -> Response:
-    """
-    Download a completed report in the requested format.
-
-    - **json**: Raw structured data (all sections combined)
-    - **md**: Clean Markdown document, suitable for pasting into Notion, Word, or a PDF converter
-    - **txt**: Plain text version of the Markdown
-    """
     _project_exists(project_id)
     sections = _get_all_sections(project_id, run_id)
     if not sections:
@@ -139,21 +264,24 @@ def export_report(
     filename_base = f"{project_id}_{run_id}_report"
 
     if format == "json":
-        payload = json.dumps(
-            {"project_id": project_id, "run_id": run_id, "sections": sections},
-            indent=2,
-        )
+        payload = json.dumps({"project_id": project_id, "run_id": run_id, "sections": sections}, indent=2)
         return Response(
             content=payload,
             media_type="application/json",
             headers={"Content-Disposition": f'attachment; filename="{filename_base}.json"'},
         )
 
+    if format == "pdf":
+        pdf_bytes = _generate_pdf(project_id, run_id, sections)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename_base}.pdf"'},
+        )
+
     md_content = _sections_to_markdown(project_id, run_id, sections)
 
     if format == "txt":
-        # Strip markdown syntax for plain text
-        import re
         txt = re.sub(r"#{1,6} ", "", md_content)
         txt = re.sub(r"\*\*(.+?)\*\*", r"\1", txt)
         txt = re.sub(r"_(.+?)_", r"\1", txt)

@@ -1,116 +1,245 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { exportUrl, getReport } from "../api/client";
+import { getReport } from "../api/client";
 import { useToast } from "../components/shared/Toast";
 import type { ReportContent } from "../types";
+
+// ── Download helper ────────────────────────────────────────────────────────
+
+async function downloadReport(
+  projectId: string,
+  runId: string,
+  format: "json" | "md" | "txt" | "pdf"
+) {
+  const url = `/api/projects/${projectId}/reports/${runId}/export?format=${format}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    alert("Export failed — check that the server is running.");
+    return;
+  }
+  const blob = await res.blob();
+  const filename = `${projectId}_${runId}_report.${format}`;
+
+  if (typeof window !== "undefined" && (window as any).__TAURI__) {
+    const { save } = await import("@tauri-apps/api/dialog");
+    const { writeBinaryFile } = await import("@tauri-apps/api/fs");
+    const buffer = await blob.arrayBuffer();
+    const filePath = await save({
+      defaultPath: filename,
+      filters: [{ name: format.toUpperCase(), extensions: [format] }],
+    });
+    if (filePath) {
+      await writeBinaryFile(filePath, new Uint8Array(buffer));
+    }
+    return;
+  }
+
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(blobUrl);
+}
 
 // ── Icons ──────────────────────────────────────────────────────────────────
 
 function DownloadIcon() {
   return (
-    <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor">
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
       <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
     </svg>
   );
 }
 
-// ── Section Renderers ──────────────────────────────────────────────────────
+// ── Section renderers ──────────────────────────────────────────────────────
 
-function renderValue(value: unknown, depth = 0): React.ReactNode {
-  if (value === null || value === undefined) return <span style={{ color: "var(--text-tertiary)" }}>—</span>;
-  if (typeof value === "string") return <span>{value}</span>;
-  if (typeof value === "number") return <span style={{ fontWeight: 600 }}>{value}</span>;
-  if (typeof value === "boolean") return <span style={{ fontWeight: 500 }}>{value ? "Yes" : "No"}</span>;
-
-  if (Array.isArray(value)) {
-    if (value.length === 0) return <span style={{ color: "var(--text-tertiary)" }}>None</span>;
-    return (
-      <ul className="report-list">
-        {value.map((item, i) => (
-          <li key={i} className="report-list-item">
-            {typeof item === "object" && item !== null ? (
-              <ObjectBlock obj={item as Record<string, unknown>} />
-            ) : (
-              String(item)
-            )}
-          </li>
-        ))}
-      </ul>
-    );
-  }
-
-  if (typeof value === "object") {
-    return <ObjectBlock obj={value as Record<string, unknown>} />;
-  }
-  return String(value);
-}
-
-function ObjectBlock({ obj }: { obj: Record<string, unknown> }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {Object.entries(obj).map(([k, v]) => (
-        <div key={k} className="report-field">
-          <div className="report-field-label">{k.replace(/_/g, " ")}</div>
-          <div className="report-field-value">{renderValue(v, 1)}</div>
-        </div>
-      ))}
-    </div>
+function ProseSection({ data }: { data: Record<string, unknown> }) {
+  // Find all text fields and render them as flowing paragraphs
+  const textKeys = Object.keys(data).filter(k =>
+    typeof data[k] === "string" && (data[k] as string).length > 80
   );
-}
-
-// Section title mapping
-const SECTION_TITLES: Record<string, string> = {
-  project_facts: "Project Facts",
-  geology_summary: "Geology",
-  economics_summary: "Economics",
-  risk_summary: "Risks",
-  permitting_summary: "Permitting",
-  financing_risk: "Financing Risk",
-  contradictions: "Internal Contradictions",
-  missing_data: "Data Gaps",
-  assumptions: "Assumption Challenges",
-  geology_score: "Geology Score",
-  economics_score: "Economics Score",
-  financing_score: "Financing Score",
-  permitting_score: "Permitting Score",
-  overall_score: "Overall Project Score",
-};
-
-// Score section — special display
-function ScoreSection({ data }: { data: Record<string, unknown> }) {
-  const score = (data.score ?? data.overall_score ?? data.rating) as number | undefined;
-  const maxScore = 100;
-  let scoreClass = "low";
-  if (typeof score === "number") {
-    if (score >= 70) scoreClass = "high";
-    else if (score >= 45) scoreClass = "mid";
-  }
+  const tableKeys = Object.keys(data).filter(k => Array.isArray(data[k]));
+  const scalarKeys = Object.keys(data).filter(k =>
+    !textKeys.includes(k) && !tableKeys.includes(k) && data[k] !== null && data[k] !== undefined
+  );
 
   return (
     <div>
-      {typeof score === "number" && (
-        <div className="score-display">
-          <div>
-            <div className={`score-number ${scoreClass}`}>{score}</div>
-            <div className="score-label">out of {maxScore}</div>
-          </div>
-          <div style={{ flex: 1 }}>
-            <div className="progress-bar" style={{ height: 8 }}>
-              <div
-                className="progress-bar-fill"
-                style={{
-                  width: `${(score / maxScore) * 100}%`,
-                  background: scoreClass === "high" ? "var(--success)" : scoreClass === "mid" ? "var(--warning)" : "var(--danger)",
-                }}
-              />
+      {/* Prose paragraphs */}
+      {textKeys.map(k => (
+        <div key={k} style={{ marginBottom: 20 }}>
+          {textKeys.length > 1 && (
+            <div style={{
+              fontSize: 11,
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              color: "var(--text-tertiary)",
+              marginBottom: 6,
+            }}>
+              {k.replace(/_/g, " ")}
             </div>
+          )}
+          <div style={{
+            fontSize: 14.5,
+            lineHeight: 1.75,
+            color: "var(--text-primary)",
+            whiteSpace: "pre-wrap",
+          }}>
+            {String(data[k])}
           </div>
         </div>
+      ))}
+
+      {/* Key metrics table */}
+      {tableKeys.map(k => {
+        const rows = data[k] as Record<string, unknown>[];
+        if (!rows.length) return null;
+        const cols = Object.keys(rows[0]);
+        return (
+          <div key={k} style={{ marginTop: 16, overflowX: "auto" }}>
+            {tableKeys.length > 1 && (
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8 }}>
+                {k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+              </div>
+            )}
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: "var(--surface-2)" }}>
+                  {cols.map(c => (
+                    <th key={c} style={{
+                      padding: "8px 12px",
+                      textAlign: "left",
+                      fontWeight: 600,
+                      fontSize: 11.5,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                      color: "var(--text-secondary)",
+                      borderBottom: "2px solid var(--border)",
+                    }}>
+                      {c.replace(/_/g, " ")}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid var(--border)" }}>
+                    {cols.map(c => (
+                      <td key={c} style={{
+                        padding: "8px 12px",
+                        color: "var(--text-primary)",
+                        fontSize: 13.5,
+                      }}>
+                        {row[c] === null || row[c] === undefined ? "—" : String(row[c])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+
+      {/* Scalar metadata (small, at bottom) */}
+      {scalarKeys.length > 0 && (
+        <div style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "8px 24px",
+          marginTop: 16,
+          paddingTop: 12,
+          borderTop: "1px solid var(--border)",
+        }}>
+          {scalarKeys.map(k => (
+            <div key={k} style={{ fontSize: 12.5 }}>
+              <span style={{ color: "var(--text-tertiary)", marginRight: 4 }}>
+                {k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}:
+              </span>
+              <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+                {String(data[k])}
+              </span>
+            </div>
+          ))}
+        </div>
       )}
-      <ObjectBlock obj={Object.fromEntries(Object.entries(data).filter(([k]) => k !== "score" && k !== "overall_score" && k !== "rating"))} />
     </div>
   );
 }
+
+function DataSourcesSection({ data }: { data: Record<string, unknown> }) {
+  const files = data.source_files as string[] ?? [];
+  return (
+    <div>
+      <div style={{
+        background: "var(--surface-2)",
+        border: "1px solid var(--border)",
+        borderLeft: "4px solid var(--accent)",
+        borderRadius: 8,
+        padding: "14px 18px",
+        marginBottom: 16,
+        fontSize: 13.5,
+        color: "var(--text-secondary)",
+        lineHeight: 1.6,
+      }}>
+        {String(data.notice ?? "")}
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8 }}>
+        Source Documents ({files.length})
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {files.map((f, i) => (
+          <div key={i} style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "6px 10px",
+            background: "var(--surface-2)",
+            borderRadius: 6,
+            fontSize: 13,
+            color: "var(--text-primary)",
+          }}>
+            <span style={{ color: "var(--accent)", fontSize: 11, fontWeight: 600 }}>✓</span>
+            {f}
+          </div>
+        ))}
+      </div>
+      {data.generated_at && (
+        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 12 }}>
+          Generated: {new Date(data.generated_at as string).toLocaleString()}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SectionContent({ sectionKey, content }: { sectionKey: string; content: unknown }) {
+  if (sectionKey === "00_data_sources") {
+    return <DataSourcesSection data={content as Record<string, unknown>} />;
+  }
+  if (typeof content === "object" && content !== null && !Array.isArray(content)) {
+    return <ProseSection data={content as Record<string, unknown>} />;
+  }
+  if (typeof content === "string") {
+    return <div style={{ fontSize: 14.5, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>{content}</div>;
+  }
+  return <pre style={{ fontSize: 12, overflow: "auto" }}>{JSON.stringify(content, null, 2)}</pre>;
+}
+
+// ── Section config ─────────────────────────────────────────────────────────
+
+const SECTION_META: Record<string, { title: string; subtitle?: string }> = {
+  "00_data_sources": { title: "Data Sources & Notice", subtitle: "Documents used in this analysis" },
+  "01_project_facts": { title: "Project Overview", subtitle: "Extracted project facts" },
+  "02_executive_summary": { title: "Executive Summary", subtitle: "Key findings and economic highlights" },
+  "03_geology": { title: "Geological Setting & Mineralisation", subtitle: "Deposit geology and resource assessment" },
+  "04_economics": { title: "Economic Analysis", subtitle: "Financial projections and sensitivity" },
+  "05_risks": { title: "Risks & Uncertainties", subtitle: "Material risks and mitigations" },
+};
 
 // ── Report Page ────────────────────────────────────────────────────────────
 
@@ -151,10 +280,9 @@ export default function ReportPage() {
     );
   }
 
-  const sectionCount = Object.keys(report.sections).length;
-  const generatedAt = new Date().toLocaleDateString("en-US", {
-    month: "long", day: "numeric", year: "numeric"
-  });
+  const projectName = id.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  const generatedAt = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const orderedSections = Object.entries(report.sections).sort(([a], [b]) => a.localeCompare(b));
 
   return (
     <div className="report-container">
@@ -162,7 +290,7 @@ export default function ReportPage() {
       <div className="breadcrumb">
         <Link to="/projects">Projects</Link>
         <span className="breadcrumb-sep">/</span>
-        <Link to={`/projects/${id}`}>{id}</Link>
+        <Link to={`/projects/${id}`}>{projectName}</Link>
         <span className="breadcrumb-sep">/</span>
         <span>Report</span>
       </div>
@@ -170,68 +298,84 @@ export default function ReportPage() {
       {/* Export bar */}
       <div className="export-bar">
         <div>
-          <div className="export-bar-title">Analysis Report — {id}</div>
+          <div className="export-bar-title">{projectName} — Technical Analysis Report</div>
           <div className="export-bar-meta">
-            Run: {rid} · {sectionCount} section{sectionCount !== 1 ? "s" : ""} · Generated {generatedAt}
+            {orderedSections.length} sections · Run {rid} · {generatedAt}
           </div>
         </div>
         <div className="export-actions">
-          <a
-            href={exportUrl(id, rid, "md")}
-            className="btn btn-secondary btn-sm"
-            download
-          >
+          <button className="btn btn-primary btn-sm" onClick={() => downloadReport(id, rid, "pdf")}>
+            <DownloadIcon /> Export PDF
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => downloadReport(id, rid, "md")}>
             <DownloadIcon /> Markdown
-          </a>
-          <a
-            href={exportUrl(id, rid, "txt")}
-            className="btn btn-secondary btn-sm"
-            download
-          >
-            <DownloadIcon /> Text
-          </a>
-          <a
-            href={exportUrl(id, rid, "json")}
-            className="btn btn-secondary btn-sm"
-            download
-          >
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => downloadReport(id, rid, "json")}>
             <DownloadIcon /> JSON
-          </a>
+          </button>
         </div>
       </div>
 
-      {/* Report header */}
-      <div className="report-header">
-        <div className="report-title">Mining Project Analysis</div>
-        <div className="report-meta">
-          <div className="report-meta-item">
-            <strong>Project:</strong> {id.replace(/_/g, " ")}
-          </div>
-          <div className="report-meta-item">
-            <strong>Run ID:</strong> {rid}
-          </div>
-          <div className="report-meta-item">
-            <strong>Date:</strong> {generatedAt}
-          </div>
+      {/* Report cover */}
+      <div style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 14,
+        padding: "36px 40px",
+        marginBottom: 20,
+        boxShadow: "var(--shadow)",
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--accent)", marginBottom: 12 }}>
+          Mining Intelligence Platform — Internal Research Report
         </div>
-        <div style={{ marginTop: 12, padding: "10px 16px", background: "var(--surface-2)", borderRadius: 8, fontSize: 12.5, color: "var(--text-secondary)", borderLeft: "3px solid var(--accent)" }}>
+        <div style={{ fontSize: 34, fontWeight: 700, letterSpacing: "-0.04em", marginBottom: 8, lineHeight: 1.1 }}>
+          {projectName}
+        </div>
+        <div style={{ fontSize: 16, color: "var(--text-secondary)", marginBottom: 20 }}>
+          Project Technical Analysis
+        </div>
+        <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
+          {[
+            ["Report Date", generatedAt],
+            ["Run ID", rid],
+            ["Classification", "Internal — Confidential"],
+            ["Prepared By", "Mining Intelligence Platform AI"],
+          ].map(([label, value]) => (
+            <div key={label}>
+              <div style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>{label}</div>
+              <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--text-primary)" }}>{value}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{
+          marginTop: 24,
+          padding: "10px 16px",
+          background: "#fff8ed",
+          borderRadius: 8,
+          fontSize: 12,
+          color: "#b7570a",
+          borderLeft: "3px solid #f0a500",
+        }}>
           This report is generated by an AI system for internal research purposes only. It does not constitute investment advice or a formal technical study. All data should be verified against primary source documents.
         </div>
       </div>
 
-      {/* Sections */}
-      {Object.entries(report.sections).map(([key, content]) => {
-        const title = SECTION_TITLES[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-        const isScore = key.includes("score");
-
+      {/* Report sections */}
+      {orderedSections.map(([key, content]) => {
+        const meta = SECTION_META[key] ?? {
+          title: key.replace(/^\d+_/, "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+        };
         return (
           <div key={key} className="report-section">
-            <div className="report-section-title">{title}</div>
-            {isScore && typeof content === "object" && content !== null ? (
-              <ScoreSection data={content as Record<string, unknown>} />
-            ) : (
-              renderValue(content)
-            )}
+            <div style={{ marginBottom: 16 }}>
+              <div className="report-section-title">{meta.title}</div>
+              {meta.subtitle && (
+                <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: -8 }}>
+                  {meta.subtitle}
+                </div>
+              )}
+            </div>
+            <SectionContent sectionKey={key} content={content} />
           </div>
         );
       })}

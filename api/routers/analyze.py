@@ -27,7 +27,7 @@ router = APIRouter(tags=["analyze"])
 # ---------------------------------------------------------------------------
 
 class AnalyzeRequest(BaseModel):
-    force: bool = False  # re-run even if outputs already exist
+    force: bool = False
 
 
 class RunStatus(BaseModel):
@@ -67,13 +67,11 @@ def _load_run_status(project_id: str, run_id: str) -> dict:
 def _save_run_status(project_id: str, run_id: str, data: dict) -> None:
     rdir = run_root(project_id, run_id)
     rdir.mkdir(parents=True, exist_ok=True)
-    status_file = rdir / "run_status.json"
-    with status_file.open("w") as f:
+    with (rdir / "run_status.json").open("w") as f:
         json.dump(data, f, indent=2)
 
 
 def _generate_run_id() -> str:
-    from datetime import datetime, timezone
     return datetime.now(timezone.utc).strftime("run_%Y%m%d_%H%M%S")
 
 
@@ -84,14 +82,35 @@ def _collect_output_files(project_id: str, run_id: str) -> list[str]:
     return [f.name for f in rdir.glob("*.json")]
 
 
+def _save_section(project_id: str, run_id: str, section_key: str, data: dict) -> None:
+    rdir = run_root(project_id, run_id)
+    rdir.mkdir(parents=True, exist_ok=True)
+    with (rdir / f"{section_key}.json").open("w") as f:
+        json.dump(data, f, indent=2)
+
+
+def _extract_response_data(response) -> dict:
+    """Safely extract dict from LLMResponse or DualLLMResponse."""
+    if hasattr(response, "merged"):
+        return response.merged or {}
+    if hasattr(response, "structured") and response.structured:
+        return response.structured
+    if hasattr(response, "content"):
+        return {"text": response.content}
+    return {}
+
+
 # ---------------------------------------------------------------------------
-# Background analysis worker
+# Full analysis pipeline
 # ---------------------------------------------------------------------------
 
 def _run_analysis_in_background(project_id: str, run_id: str) -> None:
     """
-    Background thread that calls the engine's extraction pipeline.
-    Writes run_status.json at each stage so the UI can poll progress.
+    Full consulting report pipeline:
+      1. Load documents
+      2. Extract structured project facts
+      3. Write executive summary, geology, economics, and risk sections
+      4. Save data sources notice
     """
     def update(step: str, status: str = "running", error: str | None = None) -> None:
         current = _load_run_status(project_id, run_id)
@@ -104,61 +123,106 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
         _save_run_status(project_id, run_id, current)
 
     try:
-        update("loading_documents")
+        # ── Step 1: Load documents ──────────────────────────────────────────
+        update("Loading documents")
 
-        # Collect staged section files (text extracted from raw documents)
-        sections_dir = project_root(project_id) / "normalized" / "sections"
-        section_files = list(sections_dir.glob("*.txt")) if sections_dir.exists() else []
+        raw_dir = project_root(project_id) / "raw" / "documents"
+        raw_files = list(raw_dir.glob("*")) if raw_dir.exists() else []
+        if not raw_files:
+            update("failed", status="failed",
+                   error="No files found. Upload documents first.")
+            return
 
-        if not section_files:
-            # No pre-extracted sections — build a combined text from raw files
-            raw_dir = project_root(project_id) / "raw" / "documents"
-            raw_files = list(raw_dir.glob("*")) if raw_dir.exists() else []
-            if not raw_files:
-                update("failed", status="failed", error="No files found in project library. Upload documents first.")
-                return
-            # For now, we can only process text/csv files directly without a PDF parser
-            text_parts = []
-            for rf in raw_files:
-                if rf.suffix.lower() in {".txt", ".md", ".csv"}:
-                    try:
-                        text_parts.append(rf.read_text(errors="replace"))
-                    except Exception:
-                        pass
-            if not text_parts:
-                update("failed", status="failed", error="No text-extractable files found. PDF/DOCX parsing requires the ingest pipeline (mip ingest add). Upload .txt or .csv files to test the analysis flow.")
-                return
-            project_data = "\n\n---\n\n".join(text_parts)
-        else:
-            project_data = "\n\n---\n\n".join(sf.read_text(errors="replace") for sf in section_files)
+        text_parts = []
+        source_files = []
+        for rf in raw_files:
+            if rf.suffix.lower() in {".txt", ".md", ".csv"}:
+                try:
+                    text_parts.append(f"[Source: {rf.name}]\n{rf.read_text(errors='replace')}")
+                    source_files.append(rf.name)
+                except Exception:
+                    pass
 
-        update("extracting_facts")
+        if not text_parts:
+            update("failed", status="failed",
+                   error="No readable text files found. Upload .txt or .csv files.")
+            return
 
-        # Call the engine's LLM extraction
+        project_data = "\n\n---\n\n".join(text_parts)
+        truncated = project_data[:50000]
+
+        # ── Step 2: Extract project facts ──────────────────────────────────
+        update("Extracting project facts")
+
         from engine.llm.extraction.extract_project_facts import extract_project_facts
 
-        async def _run() -> dict:
-            response = await extract_project_facts(project_data[:40000], run_id=run_id)
-            return response.content if hasattr(response, "content") else {}
+        async def _extract() -> dict:
+            r = await extract_project_facts(truncated, run_id=run_id)
+            return _extract_response_data(r)
 
-        result = asyncio.run(_run())
+        facts = asyncio.run(_extract())
+        _save_section(project_id, run_id, "01_project_facts", facts)
 
-        # Write output
-        output_dir = project_root(project_id) / "normalized" / "interpreted" / "project_facts"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        out_file = output_dir / f"{run_id}_project_facts.json"
-        with out_file.open("w") as f:
-            json.dump(result, f, indent=2)
+        facts_str = json.dumps(facts, indent=2)
+        combined = f"PROJECT FACTS:\n{facts_str}\n\nSOURCE DOCUMENTS:\n{truncated}"
 
-        # Also copy to run dir for easy retrieval
-        run_out = run_root(project_id, run_id) / "project_facts.json"
-        with run_out.open("w") as f:
-            json.dump(result, f, indent=2)
+        # ── Step 3: Write report sections in parallel ───────────────────────
+        update("Writing report sections")
 
-        update("complete", status="complete")
+        from engine.llm.reporting.write_executive_summary import write_executive_summary
+        from engine.llm.reporting.write_geology_section import write_geology_section
+        from engine.llm.reporting.write_economics_section import write_economics_section
+        from engine.llm.reporting.write_risk_section import write_risk_section
+
+        async def _write_sections() -> tuple[dict, dict, dict, dict]:
+            exec_sum, geology, economics, risks = await asyncio.gather(
+                write_executive_summary(combined, run_id=run_id),
+                write_geology_section(combined, run_id=run_id),
+                write_economics_section(combined, run_id=run_id),
+                write_risk_section(combined, run_id=run_id),
+            )
+            return (
+                _extract_response_data(exec_sum),
+                _extract_response_data(geology),
+                _extract_response_data(economics),
+                _extract_response_data(risks),
+            )
+
+        exec_sum, geology, economics, risks = asyncio.run(_write_sections())
+
+        _save_section(project_id, run_id, "02_executive_summary", exec_sum)
+        _save_section(project_id, run_id, "03_geology", geology)
+        _save_section(project_id, run_id, "04_economics", economics)
+        _save_section(project_id, run_id, "05_risks", risks)
+
+        # ── Step 4: Save data sources notice ───────────────────────────────
+        update("Finalising report")
+
+        sources_notice = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "run_id": run_id,
+            "source_files": source_files,
+            "file_count": len(source_files),
+            "notice": (
+                "This report was generated by AI from the source documents listed above. "
+                "All figures and conclusions should be verified against the original documents. "
+                "This report does not constitute investment advice or a formal technical study."
+            ),
+            "data_coverage": {
+                "project_facts": bool(facts),
+                "executive_summary": bool(exec_sum),
+                "geology": bool(geology),
+                "economics": bool(economics),
+                "risks": bool(risks),
+            }
+        }
+        _save_section(project_id, run_id, "00_data_sources", sources_notice)
+
+        update("Complete", status="complete")
 
     except Exception as exc:
-        update("failed", status="failed", error=str(exc))
+        import traceback
+        update("failed", status="failed", error=f"{exc}\n{traceback.format_exc()[:500]}")
 
 
 # ---------------------------------------------------------------------------
@@ -171,10 +235,6 @@ def start_analysis(
     body: AnalyzeRequest = AnalyzeRequest(),
     background_tasks: BackgroundTasks = BackgroundTasks(),
 ) -> RunStatus:
-    """
-    Kick off a new analysis run for the project.
-    Returns immediately with a run_id; poll /runs/{run_id} for status.
-    """
     _project_exists(project_id)
     run_id = _generate_run_id()
     now = datetime.now(timezone.utc).isoformat()
@@ -190,7 +250,6 @@ def start_analysis(
     }
     _save_run_status(project_id, run_id, status_data)
 
-    # Launch in a real thread so asyncio.run() inside works cleanly
     t = threading.Thread(
         target=_run_analysis_in_background,
         args=(project_id, run_id),
@@ -203,7 +262,6 @@ def start_analysis(
 
 @router.get("/projects/{project_id}/runs", response_model=RunList)
 def list_runs(project_id: str) -> RunList:
-    """List all runs for a project, newest first."""
     _project_exists(project_id)
     runs_dir = project_root(project_id) / "runs"
     if not runs_dir.exists():
@@ -224,7 +282,6 @@ def list_runs(project_id: str) -> RunList:
 
 @router.get("/projects/{project_id}/runs/{run_id}", response_model=RunStatus)
 def get_run(project_id: str, run_id: str) -> RunStatus:
-    """Get the status of a specific run."""
     _project_exists(project_id)
     data = _load_run_status(project_id, run_id)
     if not data:
