@@ -1,40 +1,134 @@
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { listFiles, listProjects } from "../../api/client";
+import type { FileRecord, Project } from "../../types";
 
-interface NavItemProps {
-  to: string;
-  label: string;
-  icon: React.ReactNode;
-  exact?: boolean;
+// ── Icons ───────────────────────────────────────────────────────────────────
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="11" height="11" viewBox="0 0 20 20" fill="currentColor"
+      style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s ease", flexShrink: 0 }}
+    >
+      <path fillRule="evenodd" d="M7.293 4.293a1 1 0 011.414 0l5 5a1 1 0 010 1.414l-5 5a1 1 0 01-1.414-1.414L11.586 10 7.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+    </svg>
+  );
 }
 
-function NavItem({ to, label, icon, exact = false }: NavItemProps) {
-  const { pathname } = useLocation();
-  const active = exact ? pathname === to : pathname.startsWith(to);
+function FileSmIcon() {
   return (
-    <Link to={to} className={`nav-item ${active ? "active" : ""}`}>
-      <span className="nav-icon">{icon}</span>
-      {label}
-    </Link>
+    <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style={{ flexShrink: 0, opacity: 0.5 }}>
+      <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+    </svg>
   );
 }
 
 function FolderIcon() {
   return (
-    <svg viewBox="0 0 20 20" fill="currentColor">
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style={{ flexShrink: 0 }}>
       <path d="M2 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
     </svg>
   );
 }
 
-function DocIcon() {
+// ── Project Row with expandable file list ────────────────────────────────────
+
+function ProjectRow({
+  project,
+  isActive,
+  onExpand,
+  files,
+}: {
+  project: Project;
+  isActive: boolean;
+  onExpand: (id: string) => void;
+  files: FileRecord[] | undefined;
+}) {
+  const [expanded, setExpanded] = useState(isActive);
+
+  useEffect(() => {
+    if (isActive && !expanded) {
+      setExpanded(true);
+      if (files === undefined) onExpand(project.id);
+    }
+  }, [isActive]);
+
+  function toggle(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const next = !expanded;
+    setExpanded(next);
+    if (next && files === undefined) onExpand(project.id);
+  }
+
   return (
-    <svg viewBox="0 0 20 20" fill="currentColor">
-      <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
-    </svg>
+    <div className="sidebar-project-group">
+      <div className={`sidebar-project-row ${isActive ? "active" : ""}`}>
+        <button className="sidebar-chevron-btn" onClick={toggle} tabIndex={-1}>
+          <ChevronIcon open={expanded} />
+        </button>
+        <Link to={`/projects/${project.id}`} className="sidebar-project-name">
+          <FolderIcon />
+          <span>{project.name}</span>
+        </Link>
+        {project.file_count > 0 && (
+          <span className="sidebar-count">{project.file_count}</span>
+        )}
+      </div>
+
+      {expanded && (
+        <div className="sidebar-file-tree">
+          {files === undefined ? (
+            <div className="sidebar-file-placeholder">Loading…</div>
+          ) : files.length === 0 ? (
+            <div className="sidebar-file-placeholder">No files yet</div>
+          ) : (
+            files.map((f) => (
+              <div key={f.filename} className="sidebar-file-row" title={f.filename}>
+                <FileSmIcon />
+                <span className="sidebar-file-name">{f.filename}</span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
+// ── Layout ──────────────────────────────────────────────────────────────────
+
 export default function Layout({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [fileCache, setFileCache] = useState<Record<string, FileRecord[]>>({});
+  const hasFetchedRef = useRef(false);
+
+  // Extract active project ID from URL
+  const match = location.pathname.match(/^\/projects\/([^/]+)/);
+  const activeProjectId = match?.[1] ?? null;
+
+  // Fetch projects list — refresh whenever we land on /projects
+  useEffect(() => {
+    listProjects()
+      .then(setProjects)
+      .catch(() => {});
+  }, [location.pathname === "/projects" ? location.pathname : "static"]);
+
+  // Fetch files for the active project automatically
+  useEffect(() => {
+    if (activeProjectId && fileCache[activeProjectId] === undefined) {
+      loadFiles(activeProjectId);
+    }
+  }, [activeProjectId]);
+
+  function loadFiles(projectId: string) {
+    listFiles(projectId)
+      .then((files) => setFileCache((prev) => ({ ...prev, [projectId]: files })))
+      .catch(() => setFileCache((prev) => ({ ...prev, [projectId]: [] })));
+  }
+
   return (
     <div className="app-layout">
       <aside className="sidebar">
@@ -42,11 +136,30 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <h1>Mining Intelligence</h1>
           <p>Project Analysis Platform</p>
         </div>
+
         <nav className="sidebar-nav">
-          <NavItem to="/projects" label="Projects" icon={<FolderIcon />} />
-          <NavItem to="/reports" label="Reports" icon={<DocIcon />} />
+          <div className="sidebar-section-label">Projects</div>
+
+          {projects.length === 0 ? (
+            <div className="sidebar-empty">No projects yet</div>
+          ) : (
+            projects.map((p) => (
+              <ProjectRow
+                key={p.id}
+                project={p}
+                isActive={activeProjectId === p.id}
+                onExpand={loadFiles}
+                files={fileCache[p.id]}
+              />
+            ))
+          )}
+
+          <Link to="/projects" className="sidebar-new-btn">
+            <span style={{ fontSize: 16, lineHeight: 1, marginRight: 4 }}>+</span> New Project
+          </Link>
         </nav>
       </aside>
+
       <main className="main-content">{children}</main>
     </div>
   );

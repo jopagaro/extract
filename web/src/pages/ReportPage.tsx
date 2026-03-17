@@ -4,7 +4,7 @@ import { getReport } from "../api/client";
 import { useToast } from "../components/shared/Toast";
 import type { ReportContent } from "../types";
 
-// ── Download helper ────────────────────────────────────────────────────────
+// ── Download ────────────────────────────────────────────────────────────────
 
 async function downloadReport(
   projectId: string,
@@ -28,9 +28,7 @@ async function downloadReport(
       defaultPath: filename,
       filters: [{ name: format.toUpperCase(), extensions: [format] }],
     });
-    if (filePath) {
-      await writeBinaryFile(filePath, new Uint8Array(buffer));
-    }
+    if (filePath) await writeBinaryFile(filePath, new Uint8Array(buffer));
     return;
   }
 
@@ -44,173 +42,146 @@ async function downloadReport(
   URL.revokeObjectURL(blobUrl);
 }
 
-// ── Icons ──────────────────────────────────────────────────────────────────
+// ── Icons ───────────────────────────────────────────────────────────────────
 
 function DownloadIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+    <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
       <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
     </svg>
   );
 }
 
-// ── Section renderers ──────────────────────────────────────────────────────
+// ── Section renderers ───────────────────────────────────────────────────────
 
-function ProseSection({ data }: { data: Record<string, unknown> }) {
-  // Find all text fields and render them as flowing paragraphs
-  const textKeys = Object.keys(data).filter(k =>
-    typeof data[k] === "string" && (data[k] as string).length > 80
-  );
-  const tableKeys = Object.keys(data).filter(k => Array.isArray(data[k]));
-  const scalarKeys = Object.keys(data).filter(k =>
-    !textKeys.includes(k) && !tableKeys.includes(k) && data[k] !== null && data[k] !== undefined
-  );
-
+function DataSourcesSection({ data }: { data: Record<string, unknown> }) {
+  const files = (data.source_files as string[]) ?? [];
   return (
     <div>
-      {/* Prose paragraphs */}
-      {textKeys.map(k => (
-        <div key={k} style={{ marginBottom: 20 }}>
-          {textKeys.length > 1 && (
-            <div style={{
-              fontSize: 11,
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              color: "var(--text-tertiary)",
-              marginBottom: 6,
-            }}>
-              {k.replace(/_/g, " ")}
-            </div>
-          )}
-          <div style={{
-            fontSize: 14.5,
-            lineHeight: 1.75,
-            color: "var(--text-primary)",
-            whiteSpace: "pre-wrap",
-          }}>
-            {String(data[k])}
-          </div>
-        </div>
-      ))}
-
-      {/* Key metrics table */}
-      {tableKeys.map(k => {
-        const rows = data[k] as Record<string, unknown>[];
-        if (!rows.length) return null;
-        const cols = Object.keys(rows[0]);
-        return (
-          <div key={k} style={{ marginTop: 16, overflowX: "auto" }}>
-            {tableKeys.length > 1 && (
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8 }}>
-                {k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+      <div className="report-notice">
+        {String(data.notice ?? "")}
+      </div>
+      {files.length > 0 && (
+        <>
+          <div className="report-sub-label">Source Documents ({files.length})</div>
+          <div className="report-file-list">
+            {files.map((f, i) => (
+              <div key={i} className="report-file-row">
+                <span className="report-file-check">✓</span>
+                {f}
               </div>
-            )}
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: "var(--surface-2)" }}>
-                  {cols.map(c => (
-                    <th key={c} style={{
-                      padding: "8px 12px",
-                      textAlign: "left",
-                      fontWeight: 600,
-                      fontSize: 11.5,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.05em",
-                      color: "var(--text-secondary)",
-                      borderBottom: "2px solid var(--border)",
-                    }}>
-                      {c.replace(/_/g, " ")}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid var(--border)" }}>
-                    {cols.map(c => (
-                      <td key={c} style={{
-                        padding: "8px 12px",
-                        color: "var(--text-primary)",
-                        fontSize: 13.5,
-                      }}>
-                        {row[c] === null || row[c] === undefined ? "—" : String(row[c])}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            ))}
           </div>
-        );
-      })}
-
-      {/* Scalar metadata (small, at bottom) */}
-      {scalarKeys.length > 0 && (
-        <div style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "8px 24px",
-          marginTop: 16,
-          paddingTop: 12,
-          borderTop: "1px solid var(--border)",
-        }}>
-          {scalarKeys.map(k => (
-            <div key={k} style={{ fontSize: 12.5 }}>
-              <span style={{ color: "var(--text-tertiary)", marginRight: 4 }}>
-                {k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}:
-              </span>
-              <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>
-                {String(data[k])}
-              </span>
-            </div>
-          ))}
+        </>
+      )}
+      {data.generated_at && (
+        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 14 }}>
+          Generated: {new Date(data.generated_at as string).toLocaleString()}
         </div>
       )}
     </div>
   );
 }
 
-function DataSourcesSection({ data }: { data: Record<string, unknown> }) {
-  const files = data.source_files as string[] ?? [];
+function ListBlock({ items, title }: { items: unknown[]; title?: string }) {
+  if (!items.length) return null;
+
+  // Array of objects → table
+  if (typeof items[0] === "object" && items[0] !== null) {
+    const cols = Object.keys(items[0] as object);
+    return (
+      <div style={{ marginTop: 20 }}>
+        {title && <div className="report-sub-label">{title}</div>}
+        <div style={{ overflowX: "auto" }}>
+          <table className="report-table">
+            <thead>
+              <tr>
+                {cols.map((c) => (
+                  <th key={c}>{c.replace(/_/g, " ")}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(items as Record<string, unknown>[]).map((row, i) => (
+                <tr key={i}>
+                  {cols.map((c) => (
+                    <td key={c}>
+                      {row[c] === null || row[c] === undefined ? "—" : String(row[c])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  // Array of strings → clean bullet list
   return (
-    <div>
-      <div style={{
-        background: "var(--surface-2)",
-        border: "1px solid var(--border)",
-        borderLeft: "4px solid var(--accent)",
-        borderRadius: 8,
-        padding: "14px 18px",
-        marginBottom: 16,
-        fontSize: 13.5,
-        color: "var(--text-secondary)",
-        lineHeight: 1.6,
-      }}>
-        {String(data.notice ?? "")}
-      </div>
-      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8 }}>
-        Source Documents ({files.length})
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        {files.map((f, i) => (
-          <div key={i} style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "6px 10px",
-            background: "var(--surface-2)",
-            borderRadius: 6,
-            fontSize: 13,
-            color: "var(--text-primary)",
-          }}>
-            <span style={{ color: "var(--accent)", fontSize: 11, fontWeight: 600 }}>✓</span>
-            {f}
-          </div>
+    <div style={{ marginTop: 20 }}>
+      {title && <div className="report-sub-label">{title}</div>}
+      <ul className="report-bullet-list">
+        {items.map((item, i) => (
+          <li key={i}>
+            <span className="report-bullet">—</span>
+            <span>{String(item)}</span>
+          </li>
         ))}
-      </div>
-      {data.generated_at && (
-        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 12 }}>
-          Generated: {new Date(data.generated_at as string).toLocaleString()}
+      </ul>
+    </div>
+  );
+}
+
+function ProseSection({ data }: { data: Record<string, unknown> }) {
+  const entries = Object.entries(data).filter(([, v]) => v !== null && v !== undefined);
+
+  // Categorise fields
+  const prose = entries.filter(([, v]) => typeof v === "string" && (v as string).length > 60);
+  const lists = entries.filter(([, v]) => Array.isArray(v) && (v as unknown[]).length > 0);
+  const scalars = entries.filter(
+    ([k]) =>
+      !prose.find(([pk]) => pk === k) &&
+      !lists.find(([lk]) => lk === k)
+  );
+
+  const isSingleProse = prose.length === 1 && lists.length === 0 && scalars.length === 0;
+
+  return (
+    <div className="report-prose-block">
+      {/* Prose paragraphs */}
+      {prose.map(([k, v]) => (
+        <div key={k} className="report-prose-para">
+          {!isSingleProse && prose.length > 1 && (
+            <div className="report-para-label">{k.replace(/_/g, " ")}</div>
+          )}
+          <p>{String(v)}</p>
+        </div>
+      ))}
+
+      {/* Lists */}
+      {lists.map(([k, v]) => (
+        <ListBlock
+          key={k}
+          items={v as unknown[]}
+          title={lists.length > 1 || prose.length > 0
+            ? k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+            : undefined}
+        />
+      ))}
+
+      {/* Scalar metadata — shown as subtle chips at the bottom */}
+      {scalars.length > 0 && (
+        <div className="report-scalar-row">
+          {scalars.map(([k, v]) => (
+            <div key={k} className="report-scalar-chip">
+              <span className="report-scalar-label">
+                {k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+              </span>
+              <span className="report-scalar-value">{String(v)}</span>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -225,23 +196,27 @@ function SectionContent({ sectionKey, content }: { sectionKey: string; content: 
     return <ProseSection data={content as Record<string, unknown>} />;
   }
   if (typeof content === "string") {
-    return <div style={{ fontSize: 14.5, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>{content}</div>;
+    return (
+      <div className="report-prose-block">
+        <p>{content}</p>
+      </div>
+    );
   }
   return <pre style={{ fontSize: 12, overflow: "auto" }}>{JSON.stringify(content, null, 2)}</pre>;
 }
 
-// ── Section config ─────────────────────────────────────────────────────────
+// ── Section metadata ────────────────────────────────────────────────────────
 
 const SECTION_META: Record<string, { title: string; subtitle?: string }> = {
-  "00_data_sources": { title: "Data Sources & Notice", subtitle: "Documents used in this analysis" },
+  "00_data_sources": { title: "Data Sources", subtitle: "Documents used in this analysis" },
   "01_project_facts": { title: "Project Overview", subtitle: "Extracted project facts" },
-  "02_executive_summary": { title: "Executive Summary", subtitle: "Key findings and economic highlights" },
-  "03_geology": { title: "Geological Setting & Mineralisation", subtitle: "Deposit geology and resource assessment" },
-  "04_economics": { title: "Economic Analysis", subtitle: "Financial projections and sensitivity" },
+  "02_executive_summary": { title: "Executive Summary", subtitle: "Key findings and highlights" },
+  "03_geology": { title: "Geology", subtitle: "Deposit geology and resource assessment" },
+  "04_economics": { title: "Economics", subtitle: "Financial projections and sensitivity" },
   "05_risks": { title: "Risks & Uncertainties", subtitle: "Material risks and mitigations" },
 };
 
-// ── Report Page ────────────────────────────────────────────────────────────
+// ── Report Page ─────────────────────────────────────────────────────────────
 
 export default function ReportPage() {
   const { projectId, runId } = useParams<{ projectId: string; runId: string }>();
@@ -280,8 +255,12 @@ export default function ReportPage() {
     );
   }
 
-  const projectName = id.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-  const generatedAt = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const projectName = id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const generatedAt = new Date().toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
   const orderedSections = Object.entries(report.sections).sort(([a], [b]) => a.localeCompare(b));
 
   return (
@@ -295,84 +274,67 @@ export default function ReportPage() {
         <span>Report</span>
       </div>
 
-      {/* Export bar */}
-      <div className="export-bar">
-        <div>
-          <div className="export-bar-title">{projectName} — Technical Analysis Report</div>
-          <div className="export-bar-meta">
-            {orderedSections.length} sections · Run {rid} · {generatedAt}
-          </div>
-        </div>
-        <div className="export-actions">
-          <button className="btn btn-primary btn-sm" onClick={() => downloadReport(id, rid, "pdf")}>
-            <DownloadIcon /> Export PDF
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={() => downloadReport(id, rid, "md")}>
-            <DownloadIcon /> Markdown
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={() => downloadReport(id, rid, "json")}>
-            <DownloadIcon /> JSON
-          </button>
-        </div>
-      </div>
-
-      {/* Report cover */}
-      <div style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: 14,
-        padding: "36px 40px",
-        marginBottom: 20,
-        boxShadow: "var(--shadow)",
-      }}>
-        <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--accent)", marginBottom: 12 }}>
+      {/* Cover card */}
+      <div className="report-cover">
+        <div className="report-cover-eyebrow">
           Mining Intelligence Platform — Internal Research Report
         </div>
-        <div style={{ fontSize: 34, fontWeight: 700, letterSpacing: "-0.04em", marginBottom: 8, lineHeight: 1.1 }}>
-          {projectName}
-        </div>
-        <div style={{ fontSize: 16, color: "var(--text-secondary)", marginBottom: 20 }}>
-          Project Technical Analysis
-        </div>
-        <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
+        <div className="report-cover-title">{projectName}</div>
+        <div className="report-cover-subtitle">Project Technical Analysis</div>
+
+        <div className="report-cover-meta">
           {[
             ["Report Date", generatedAt],
             ["Run ID", rid],
             ["Classification", "Internal — Confidential"],
             ["Prepared By", "Mining Intelligence Platform AI"],
           ].map(([label, value]) => (
-            <div key={label}>
-              <div style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>{label}</div>
-              <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--text-primary)" }}>{value}</div>
+            <div key={label} className="report-cover-meta-item">
+              <div className="report-cover-meta-label">{label}</div>
+              <div className="report-cover-meta-value">{value}</div>
             </div>
           ))}
         </div>
-        <div style={{
-          marginTop: 24,
-          padding: "10px 16px",
-          background: "#fff8ed",
-          borderRadius: 8,
-          fontSize: 12,
-          color: "#b7570a",
-          borderLeft: "3px solid #f0a500",
-        }}>
-          This report is generated by an AI system for internal research purposes only. It does not constitute investment advice or a formal technical study. All data should be verified against primary source documents.
+
+        <div className="report-disclaimer">
+          This report is generated by an AI system for internal research purposes only. It does not
+          constitute investment advice or a formal technical study. All data should be verified
+          against primary source documents.
+        </div>
+
+        {/* Export actions */}
+        <div className="report-export-row">
+          <span style={{ fontSize: 12.5, color: "var(--text-tertiary)" }}>
+            {orderedSections.length} sections
+          </span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-primary btn-sm" onClick={() => downloadReport(id, rid, "pdf")}>
+              <DownloadIcon /> PDF
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => downloadReport(id, rid, "md")}>
+              <DownloadIcon /> Markdown
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => downloadReport(id, rid, "json")}>
+              <DownloadIcon /> JSON
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Report sections */}
       {orderedSections.map(([key, content]) => {
         const meta = SECTION_META[key] ?? {
-          title: key.replace(/^\d+_/, "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+          title: key
+            .replace(/^\d+_/, "")
+            .replace(/_/g, " ")
+            .replace(/\b\w/g, (c) => c.toUpperCase()),
         };
         return (
           <div key={key} className="report-section">
-            <div style={{ marginBottom: 16 }}>
+            <div className="report-section-header">
               <div className="report-section-title">{meta.title}</div>
               {meta.subtitle && (
-                <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: -8 }}>
-                  {meta.subtitle}
-                </div>
+                <div className="report-section-subtitle">{meta.subtitle}</div>
               )}
             </div>
             <SectionContent sectionKey={key} content={content} />

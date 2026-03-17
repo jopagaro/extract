@@ -115,24 +115,38 @@ def _sections_to_markdown(project_id: str, run_id: str, sections: dict) -> str:
 
 
 def _flatten_for_pdf(content: object, lines: list[str], indent: int = 0) -> None:
-    """Recursively flatten content into plain text lines for PDF."""
+    """Recursively flatten content into plain text lines for PDF.
+
+    Long prose strings are emitted without a label so they render as
+    flowing paragraphs.  Short scalars use "Label: value" format.
+    """
     pad = "  " * indent
     if isinstance(content, dict):
         for k, v in content.items():
             label = k.replace("_", " ").title()
-            if isinstance(v, (dict, list)):
-                lines.append(f"{pad}{label}:")
-                _flatten_for_pdf(v, lines, indent + 1)
-            else:
+            if isinstance(v, str) and len(v) > 80:
+                # Prose paragraph — no label, just the text
+                lines.append(v)
+                lines.append("")
+            elif isinstance(v, list):
+                if v:
+                    lines.append(f"{pad}{label}:")
+                    _flatten_for_pdf(v, lines, indent + 1)
+                    lines.append("")
+            elif isinstance(v, dict):
+                _flatten_for_pdf(v, lines, indent)
+            elif v is not None and str(v).strip():
                 lines.append(f"{pad}{label}: {v}")
     elif isinstance(content, list):
         for item in content:
             if isinstance(item, dict):
                 _flatten_for_pdf(item, lines, indent)
+                lines.append("")
             else:
                 lines.append(f"{pad}• {item}")
     else:
-        lines.append(f"{pad}{content}")
+        if str(content).strip():
+            lines.append(f"{pad}{content}")
 
 
 def _safe(text: str) -> str:
@@ -226,8 +240,9 @@ def _generate_pdf(project_id: str, run_id: str, sections: dict) -> bytes:
             # Truncate extremely long words that would break the layout
             words = line.split()
             line = " ".join(w[:80] if len(w) > 80 else w for w in words)
-            if ":" in line and not line.strip().startswith("*"):
-                colon_pos = line.index(":")
+            colon_pos = line.find(":")
+            if colon_pos != -1 and colon_pos < 28 and not line.strip().startswith("•"):
+                # Short "Label: value" line — bold the label
                 label_part = line[:colon_pos + 1]
                 value_part = line[colon_pos + 1:]
                 pdf.set_font("Helvetica", "B", 9.5)
