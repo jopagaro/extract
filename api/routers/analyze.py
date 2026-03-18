@@ -294,3 +294,14 @@ def get_run(project_id: str, run_id: str) -> RunStatus:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
     outputs = _collect_output_files(project_id, run_id)
     return RunStatus(**data, output_files=outputs)
+
+
+@router.delete("/projects/{project_id}/runs/{run_id}", status_code=204)
+def delete_run(project_id: str, run_id: str) -> None:
+    _project_exists(project_id)
+    rdir = run_root(project_id, run_id)
+    if not rdir.exists():
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    import shutil
+    shutil.rmtree(rdir)
+

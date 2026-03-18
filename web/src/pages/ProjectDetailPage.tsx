@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   deleteFile,
+  deleteRun,
   getProject,
   getRun,
   listFiles,
@@ -140,6 +141,16 @@ export default function ProjectDetailPage() {
       toast(`Removed ${filename}`, "info");
     } catch {
       toast("Failed to remove file", "error");
+    }
+  }
+
+  async function handleDeleteRun(runId: string) {
+    try {
+      await deleteRun(id, runId);
+      setRuns((prev) => prev.filter((r) => r.run_id !== runId));
+      toast("Run deleted", "info");
+    } catch {
+      toast("Failed to delete run", "error");
     }
   }
 
@@ -322,6 +333,15 @@ export default function ProjectDetailPage() {
                     >
                       View Report
                     </Link>
+                  )}
+                  {r.status !== "running" && r.status !== "pending" && (
+                    <button
+                      className="btn-icon-only"
+                      onClick={() => handleDeleteRun(r.run_id)}
+                      title="Delete run"
+                    >
+                      <TrashIcon />
+                    </button>
                   )}
                 </div>
               ))}

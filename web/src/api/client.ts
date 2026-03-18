@@ -94,6 +94,10 @@ export async function getRun(projectId: string, runId: string): Promise<RunStatu
   return request(`/projects/${projectId}/runs/${runId}`);
 }
 
+export async function deleteRun(projectId: string, runId: string): Promise<void> {
+  return request(`/projects/${projectId}/runs/${runId}`, { method: "DELETE" });
+}
+
 // ── Reports ─────────────────────────────────────────────────────────────────
 
 export async function getReport(
