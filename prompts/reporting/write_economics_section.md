@@ -26,26 +26,30 @@ You will receive:
      Include a cash flow waterfall chart description if chart_builder is available."
      Add your firm's conventions for presenting pre-tax vs post-tax results. -->
 
+## Important
+
+Do NOT use numbered ratings or levels to characterise financial strength or risk
+(e.g. do NOT write "risk level 3" or "economic strength: 4/5").
+If the economics are thin, say why — e.g. "the IRR of 8% falls below the typical
+cost of capital for a project at this stage." If they are robust, say why.
+
 ## Output Format
+
+Return a flat JSON object. Each field is a full prose paragraph for that sub-topic.
+Also include a key_metrics array if hard figures are available.
+Use null for any field where source data is insufficient. Do not invent numbers.
 
 ```json
 {
-  "section_title": "Financial Analysis",
-  "subsections": [
-    {
-      "heading": null,
-      "level": null,
-      "text": null
-    }
-  ],
-  "key_metrics_table": [
+  "economic_overview": null,
+  "capital_costs": null,
+  "operating_costs": null,
+  "revenue_model": null,
+  "project_economics": null,
+  "sensitivity_analysis": null,
+  "key_metrics": [
     {"metric": null, "value": null, "unit": null, "notes": null}
-  ],
-  "sensitivity_table": {
-    "variable": null,
-    "scenarios": []
-  },
-  "word_count": null
+  ]
 }
 ```
 

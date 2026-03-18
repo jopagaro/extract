@@ -22,37 +22,42 @@ You will receive:
      or "List risks in order of materiality, not category."
      Add any risk factors that are mandatory disclosures for your jurisdiction or client type. -->
 
+## Important
+
+Do NOT assign numbered severity ratings to risks (e.g. do NOT write "Risk Level 3"
+or "severity: 4/5"). Describe each risk's materiality in plain language — explain
+what the potential financial or operational impact is and whether any meaningful
+mitigation exists. Describe intensity with words: "this risk could materially delay
+the project" not "this is a Level 4 risk."
+
 ## Output Format
+
+Return a flat JSON object. Each field is a full prose paragraph for that risk category.
+Use null for categories not relevant to this project. Do not invent risks.
 
 ```json
 {
-  "section_title": "Risks and Uncertainties",
-  "risk_overview_paragraph": null,
-  "risk_subsections": [
-    {
-      "category": null,
-      "heading": null,
-      "text": null
-    }
-  ],
-  "data_gaps_paragraph": null,
-  "word_count": null
+  "risk_overview": null,
+  "geological_risks": null,
+  "technical_and_engineering_risks": null,
+  "permitting_and_regulatory_risks": null,
+  "financial_and_market_risks": null,
+  "operational_risks": null,
+  "data_gaps": null
 }
 ```
 
 ## Writing Standards
 
-<!-- ✏️ EDIT: Replace with your firm's risk section conventions -->
+**risk_overview** — 2–3 sentences summarising the overall risk picture.
+Identify the most material categories without using numbered ratings.
 
-**Risk overview**: 1-2 sentences introducing the risk landscape.
-State the number of material risk categories identified.
+**Per-category fields** — Each active risk category gets one prose paragraph.
+State: the specific risks, why they matter to this project, the potential
+economic impact in plain language, and what mitigation (if any) is in place.
 
-**Per-category paragraphs**: Each risk category gets one paragraph.
-State: the specific risks in that category, why they are material to this project,
-the potential economic impact (qualitatively), and what mitigation is in place.
-
-**Data gaps**: A closing paragraph identifying what information is missing that,
-if available, would materially change the risk picture.
+**data_gaps** — Identify information that is absent from the source documents
+that would materially change the risk picture if it were available.
 
 ## Tone
 

@@ -21,6 +21,9 @@ You will receive the following pre-summarised data:
 - Do not introduce information not present in the input data
 - Lead with what the project is, then what the study found, then the key risks
 - Do not use investment language or promotional phrases
+- Do NOT use numbered ratings or levels (e.g. do NOT write "Level 2 study" or
+  "confidence: 3/5"). If data confidence is relevant, describe it in plain
+  language — e.g. "the study is based on Inferred resources only"
 - Keep it concise — this section should be readable in under 5 minutes
 
 <!-- ✏️ EDIT: Specify your target word count and structure.
