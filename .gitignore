@@ -28,3 +28,4 @@ web/vite.config.js
 
 # pnpm lockfile (managed at workspace level)
 pnpm-lock.yaml
+user_settings.json
