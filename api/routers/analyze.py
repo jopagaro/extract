@@ -127,25 +127,31 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
         update("Loading documents")
 
         raw_dir = project_root(project_id) / "raw" / "documents"
-        raw_files = list(raw_dir.glob("*")) if raw_dir.exists() else []
+        raw_files = [f for f in raw_dir.glob("*") if f.is_file()] if raw_dir.exists() else []
         if not raw_files:
             update("failed", status="failed",
                    error="No files found. Upload documents first.")
             return
 
+        from engine.core.document_loader import load_document
+
         text_parts = []
         source_files = []
+        load_errors = []
         for rf in raw_files:
-            if rf.suffix.lower() in {".txt", ".md", ".csv"}:
-                try:
-                    text_parts.append(f"[Source: {rf.name}]\n{rf.read_text(errors='replace')}")
+            try:
+                text = load_document(rf)
+                if text and text.strip():
+                    text_parts.append(f"[Source: {rf.name}]\n{text}")
                     source_files.append(rf.name)
-                except Exception:
-                    pass
+            except Exception as exc:
+                load_errors.append(f"{rf.name}: {exc}")
 
         if not text_parts:
-            update("failed", status="failed",
-                   error="No readable text files found. Upload .txt or .csv files.")
+            detail = "No readable content found in uploaded files."
+            if load_errors:
+                detail += " Errors: " + "; ".join(load_errors[:3])
+            update("failed", status="failed", error=detail)
             return
 
         project_data = "\n\n---\n\n".join(text_parts)

@@ -5,7 +5,7 @@ interface DropZoneProps {
   disabled?: boolean;
 }
 
-const FORMATS = ["PDF", "DOCX", "XLSX", "CSV", "TXT", "PNG", "DXF"];
+const FORMATS = ["PDF", "DOCX", "XLSX", "CSV", "TXT", "PNG/JPG", "DXF"];
 
 function UploadIcon() {
   return (
