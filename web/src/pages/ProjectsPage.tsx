@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { createProject, deleteProject, listProjects } from "../api/client";
+import { createProject, listProjects } from "../api/client";
 import { useToast } from "../components/shared/Toast";
 import type { Project, ProjectCreate } from "../types";
 
@@ -10,14 +10,6 @@ function PlusIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <path d="M8 3v10M3 8h10" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
-      <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
     </svg>
   );
 }
@@ -164,18 +156,6 @@ export default function ProjectsPage() {
     return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   }
 
-  async function handleDeleteProject(e: React.MouseEvent, projectId: string, projectName: string) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!window.confirm(`Delete "${projectName}"? This removes all files and reports and cannot be undone.`)) return;
-    try {
-      await deleteProject(projectId);
-      setProjects((prev) => prev.filter((p) => p.id !== projectId));
-      toast(`"${projectName}" deleted`, "info");
-    } catch {
-      toast("Failed to delete project", "error");
-    }
-  }
 
   return (
     <>
@@ -216,16 +196,7 @@ export default function ProjectsPage() {
                     {p.created_at && <span> · {formatDate(p.created_at)}</span>}
                   </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <StatusBadge status={p.status} />
-                  <button
-                    className="btn-icon-only project-card-delete"
-                    onClick={(e) => handleDeleteProject(e, p.id, p.name)}
-                    title="Delete project"
-                  >
-                    <TrashIcon />
-                  </button>
-                </div>
+                <StatusBadge status={p.status} />
               </div>
               {p.description && (
                 <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 4 }}>

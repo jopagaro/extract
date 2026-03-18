@@ -133,6 +133,20 @@ def get_project(project_id: str) -> ProjectResponse:
     return _build_response(project_id, meta)
 
 
+@router.patch("/{project_id}", response_model=ProjectResponse)
+def rename_project(project_id: str, body: dict) -> ProjectResponse:
+    """Update the display name of a project."""
+    meta = _load_metadata(project_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Name cannot be empty")
+    meta["name"] = name
+    _save_metadata(project_id, meta)
+    return _build_response(project_id, meta)
+
+
 @router.delete("/{project_id}", status_code=204)
 def delete_project(project_id: str) -> None:
     """Delete a project folder and all its data. Irreversible."""

@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   deleteFile,
+  deleteProject,
   deleteRun,
   getProject,
   getRun,
   listFiles,
   listRuns,
+  renameProject,
   startAnalysis,
   uploadFiles,
 } from "../api/client";
@@ -37,6 +39,110 @@ function PlayIcon() {
     <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
     </svg>
+  );
+}
+
+function DotsIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+      <circle cx="4" cy="10" r="1.5" />
+      <circle cx="10" cy="10" r="1.5" />
+      <circle cx="16" cy="10" r="1.5" />
+    </svg>
+  );
+}
+
+// ── Project Settings Dropdown ───────────────────────────────────────────────
+
+function ProjectMenu({ onRename, onDelete }: { onRename: () => void; onDelete: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        className="btn btn-secondary btn-sm"
+        onClick={() => setOpen((o) => !o)}
+        title="Project settings"
+      >
+        <DotsIcon />
+      </button>
+      {open && (
+        <div className="project-menu-dropdown">
+          <button className="project-menu-item" onClick={() => { setOpen(false); onRename(); }}>
+            <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M13.586 3.586a2 2 0 112.828 2.828l-8.793 8.793-3.536.707.707-3.535 8.794-8.793z" />
+            </svg>
+            Rename
+          </button>
+          <button className="project-menu-item" style={{ opacity: 0.5, cursor: "not-allowed" }} disabled>
+            <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" />
+            </svg>
+            Share <span style={{ fontSize: 10, marginLeft: 4, color: "var(--text-tertiary)" }}>soon</span>
+          </button>
+          <div className="project-menu-divider" />
+          <button className="project-menu-item project-menu-item-danger" onClick={() => { setOpen(false); onDelete(); }}>
+            <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            Delete Project
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Rename Modal ────────────────────────────────────────────────────────────
+
+function RenameModal({ current, onClose, onRename }: {
+  current: string;
+  onClose: () => void;
+  onRename: (name: string) => void;
+}) {
+  const [name, setName] = useState(current);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || name.trim() === current) { onClose(); return; }
+    setLoading(true);
+    onRename(name.trim());
+  }
+
+  return (
+    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-title">Rename Project</div>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label className="form-label">Project Name</label>
+            <input
+              className="form-input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoFocus
+              required
+            />
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={loading || !name.trim()}>
+              {loading ? <span className="spinner" /> : null} Save
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
@@ -77,6 +183,7 @@ export default function ProjectDetailPage() {
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [activeTab, setActiveTab] = useState<"files" | "runs">("files");
+  const [showRename, setShowRename] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const id = projectId!;
@@ -154,6 +261,29 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function handleRename(name: string) {
+    try {
+      await renameProject(id, name);
+      setProject((p) => p ? { ...p, name } : p);
+      toast(`Renamed to "${name}"`, "success");
+    } catch {
+      toast("Failed to rename project", "error");
+    } finally {
+      setShowRename(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!window.confirm(`Delete "${project?.name}"? This removes all files and reports and cannot be undone.`)) return;
+    try {
+      await deleteProject(id);
+      toast("Project deleted", "info");
+      navigate("/projects");
+    } catch {
+      toast("Failed to delete project", "error");
+    }
+  }
+
   async function handleRunAnalysis() {
     if (files.length === 0) {
       toast("Upload files first before running analysis", "error");
@@ -202,18 +332,29 @@ export default function ProjectDetailPage() {
             {project.description && <span> · {project.description}</span>}
           </p>
         </div>
-        <button
-          className="btn btn-primary btn-lg"
-          onClick={handleRunAnalysis}
-          disabled={analyzing || files.length === 0}
-        >
-          {analyzing ? (
-            <><span className="spinner" /> Analyzing…</>
-          ) : (
-            <><PlayIcon /> Run Analysis</>
-          )}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <ProjectMenu onRename={() => setShowRename(true)} onDelete={handleDelete} />
+          <button
+            className="btn btn-primary btn-lg"
+            onClick={handleRunAnalysis}
+            disabled={analyzing || files.length === 0}
+          >
+            {analyzing ? (
+              <><span className="spinner" /> Analyzing…</>
+            ) : (
+              <><PlayIcon /> Run Analysis</>
+            )}
+          </button>
+        </div>
       </div>
+
+      {showRename && (
+        <RenameModal
+          current={project.name}
+          onClose={() => setShowRename(false)}
+          onRename={handleRename}
+        />
+      )}
 
       {/* Progress bar when running */}
       {activeRun && (
