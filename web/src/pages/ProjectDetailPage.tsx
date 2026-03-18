@@ -1,5 +1,60 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+
+// ── Analysis step pills ─────────────────────────────────────────────────────
+
+const ANALYSIS_STEPS = [
+  { id: "loading",   label: "/loading",   order: 0, delay: 0 },
+  { id: "extract",   label: "/extract",   order: 1, delay: 0 },
+  { id: "geology",   label: "/geology",   order: 2, delay: 0 },
+  { id: "economics", label: "/economics", order: 2, delay: 0.45 },
+  { id: "risks",     label: "/risks",     order: 2, delay: 0.9 },
+  { id: "report",    label: "/report",    order: 3, delay: 0 },
+] as const;
+
+const BACKEND_STEP_ORDER: Record<string, number> = {
+  "queued":                    0,
+  "Loading documents":         0,
+  "Extracting project facts":  1,
+  "Writing report sections":   2,
+  "Finalising report":         3,
+  "Complete":                  4,
+};
+
+function getStepState(
+  step: typeof ANALYSIS_STEPS[number],
+  currentStep: string,
+  runStatus: string,
+): "pending" | "active" | "done" {
+  if (runStatus === "complete") return "done";
+  if (runStatus === "failed") return "pending";
+  const current = BACKEND_STEP_ORDER[currentStep] ?? 0;
+  if (current > step.order) return "done";
+  if (current === step.order) return "active";
+  return "pending";
+}
+
+function AnalysisPills({ run }: { run: { step?: string; status: string } }) {
+  const step = run.step ?? "queued";
+  return (
+    <div className="step-pills">
+      {ANALYSIS_STEPS.map((s) => {
+        const state = getStepState(s, step, run.status);
+        return (
+          <div key={s.id} className={`step-pill step-pill-${state}`}>
+            <span className="step-pill-label">{s.label}</span>
+            <div
+              className="step-pill-fill"
+              style={state === "active" ? { animationDelay: `${s.delay}s` } : undefined}
+            >
+              <span>{s.label}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 import {
   archiveProject,
   deleteFile,
@@ -356,20 +411,15 @@ export default function ProjectDetailPage() {
         />
       )}
 
-      {/* Progress bar when running */}
+      {/* Analysis progress pills */}
       {activeRun && (
         <div style={{ marginBottom: 24 }}>
           <div className="run-panel">
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
               <span style={{ fontSize: 14, fontWeight: 600 }}>Analysis in progress</span>
               <RunBadge status={activeRun.status} />
             </div>
-            <div className="progress-bar progress-bar-indeterminate">
-              <div className="progress-bar-fill" />
-            </div>
-            <div style={{ marginTop: 8, fontSize: 13, color: "var(--text-secondary)" }}>
-              Step: {activeRun.step ?? "queued"}
-            </div>
+            <AnalysisPills run={activeRun} />
           </div>
         </div>
       )}
@@ -380,15 +430,22 @@ export default function ProjectDetailPage() {
           <div>
             <div style={{ fontWeight: 600 }}>{completeRuns.length} report{completeRuns.length > 1 ? "s" : ""} ready</div>
             <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 3 }}>
-              Click to view the most recent analysis results
+              View the latest results or compare two runs side by side
             </div>
           </div>
-          <Link
-            to={`/projects/${id}/report/${completeRuns[0].run_id}`}
-            className="btn btn-primary"
-          >
-            View Report
-          </Link>
+          <div style={{ display: "flex", gap: 8 }}>
+            {completeRuns.length >= 2 && (
+              <Link to={`/projects/${id}/compare`} className="btn btn-secondary">
+                Compare
+              </Link>
+            )}
+            <Link
+              to={`/projects/${id}/report/${completeRuns[0].run_id}`}
+              className="btn btn-primary"
+            >
+              View Report
+            </Link>
+          </div>
         </div>
       )}
 

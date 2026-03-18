@@ -1012,3 +1012,367 @@ body {
   color: var(--text-primary);
   box-shadow: 0 1px 4px rgba(0,0,0,0.1);
 }
+
+/* ─── Sidebar Bottom ───────────────────────────────────────────────────── */
+.sidebar-bottom {
+  padding: 12px 10px;
+  border-top: 1px solid var(--border);
+}
+.sidebar-bottom-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: background var(--transition), color var(--transition);
+}
+.sidebar-bottom-link:hover { background: var(--surface-2); color: var(--text-primary); }
+.sidebar-bottom-link.active { background: var(--accent-light); color: var(--accent); }
+
+/* ─── Analysis Step Pills ──────────────────────────────────────────────── */
+.step-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.step-pill {
+  position: relative;
+  overflow: hidden;
+  border-radius: 10px;
+  padding: 5px 13px;
+  border: none;
+  cursor: default;
+  user-select: none;
+}
+
+.step-pill-label {
+  position: relative;
+  z-index: 2;
+  font-family: "SF Mono", "Fira Mono", "Menlo", monospace;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.step-pill-fill {
+  position: absolute;
+  inset: 0;
+  padding: 5px 13px;
+  display: flex;
+  align-items: center;
+  z-index: 3;
+  clip-path: inset(0px 100% 0px 0px);
+}
+
+.step-pill-fill span {
+  font-family: "SF Mono", "Fira Mono", "Menlo", monospace;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: #fff;
+  white-space: nowrap;
+}
+
+/* Pending state */
+.step-pill-pending {
+  background: rgba(0, 0, 0, 0.055);
+}
+.step-pill-pending .step-pill-label { color: var(--text-tertiary); }
+.step-pill-pending .step-pill-fill { display: none; }
+
+/* Active state — shimmer animation */
+.step-pill-active {
+  background: rgba(0, 113, 227, 0.1);
+}
+.step-pill-active .step-pill-label { color: var(--accent); }
+.step-pill-active .step-pill-fill {
+  background: var(--accent);
+  animation: pill-shimmer 2.2s ease-in-out infinite;
+}
+
+/* Done state — fully filled */
+.step-pill-done {
+  background: var(--accent);
+}
+.step-pill-done .step-pill-label { color: #fff; }
+.step-pill-done .step-pill-fill {
+  background: var(--accent);
+  clip-path: inset(0px 0% 0px 0px);
+}
+
+@keyframes pill-shimmer {
+  0%   { clip-path: inset(0px 100% 0px 0px); }
+  60%  { clip-path: inset(0px 10% 0px 0px); }
+  100% { clip-path: inset(0px 100% 0px 0px); }
+}
+
+/* ─── Settings Page ────────────────────────────────────────────────────── */
+.settings-container {
+  max-width: 620px;
+}
+
+.settings-section {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: var(--radius);
+  padding: 28px 32px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.07);
+}
+
+.settings-section-header {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+  color: var(--accent);
+}
+
+.settings-section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.settings-section-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.settings-section-desc code {
+  font-family: "SF Mono", "Fira Mono", monospace;
+  font-size: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--text-primary);
+}
+
+.settings-keys-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-key-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px 18px;
+}
+
+.settings-key-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: 12px;
+}
+
+.settings-key-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 3px;
+}
+
+.settings-key-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.settings-key-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--success);
+  background: var(--success-light);
+  border-radius: 20px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+
+.settings-key-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.settings-key-input {
+  width: 100%;
+  padding-right: 42px;
+  font-family: "SF Mono", "Fira Mono", monospace;
+  font-size: 12.5px;
+}
+
+.settings-key-toggle {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  transition: color var(--transition);
+}
+.settings-key-toggle:hover { color: var(--text-primary); }
+
+.settings-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+/* ─── Comparison View ──────────────────────────────────────────────────── */
+.compare-selectors {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.compare-selector-group {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.compare-vs-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  padding-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.compare-view {
+  display: flex;
+  gap: 0;
+  min-height: 600px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.07);
+}
+
+.compare-divider {
+  width: 1px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.compare-panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+}
+
+.compare-panel-loading,
+.compare-panel-empty {
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.compare-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.6);
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.compare-run-id {
+  font-family: "SF Mono", "Fira Mono", monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.compare-panel-body {
+  overflow-y: auto;
+  padding: 20px 24px;
+  flex: 1;
+}
+
+.compare-section {
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.compare-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.compare-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+/* ─── Report improvements ──────────────────────────────────────────────── */
+.report-container { max-width: 860px; }
+
+.report-section-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+}
+
+.report-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 22px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid var(--border);
+}
+
+.report-prose-para p {
+  font-size: 15px;
+  line-height: 1.85;
+}
+
+/* Key metrics table emphasis */
+.report-table tr:first-child td:first-child,
+.report-table tr:first-child th:first-child {
+  font-weight: 600;
+}

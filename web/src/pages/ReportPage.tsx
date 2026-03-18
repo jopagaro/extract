@@ -74,9 +74,9 @@ function DataSourcesSection({ data }: { data: Record<string, unknown> }) {
           </div>
         </>
       )}
-      {data.generated_at && (
+      {data.generated_at != null && (
         <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 14 }}>
-          Generated: {new Date(data.generated_at as string).toLocaleString()}
+          Generated: {new Date(String(data.generated_at)).toLocaleString()}
         </div>
       )}
     </div>
@@ -277,7 +277,7 @@ export default function ReportPage() {
       {/* Cover card */}
       <div className="report-cover">
         <div className="report-cover-eyebrow">
-          Mining Intelligence Platform — Internal Research Report
+          Extract — Technical Analysis Report
         </div>
         <div className="report-cover-title">{projectName}</div>
         <div className="report-cover-subtitle">Project Technical Analysis</div>
@@ -287,7 +287,7 @@ export default function ReportPage() {
             ["Report Date", generatedAt],
             ["Run ID", rid],
             ["Classification", "Internal — Confidential"],
-            ["Prepared By", "Mining Intelligence Platform AI"],
+            ["Prepared By", "Extract AI"],
           ].map(([label, value]) => (
             <div key={label} className="report-cover-meta-item">
               <div className="report-cover-meta-label">{label}</div>

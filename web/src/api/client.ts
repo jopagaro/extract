@@ -1,6 +1,7 @@
 // API client — thin wrapper around the FastAPI backend
 
 import type {
+  AppSettings,
   FileRecord,
   IngestResponse,
   Project,
@@ -116,6 +117,19 @@ export async function getReport(
   runId: string
 ): Promise<ReportContent> {
   return request(`/projects/${projectId}/reports/${runId}`);
+}
+
+// ── Settings ─────────────────────────────────────────────────────────────────
+
+export async function getSettings(): Promise<AppSettings> {
+  return request("/settings");
+}
+
+export async function saveSettings(body: AppSettings): Promise<AppSettings> {
+  return request("/settings", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export function exportUrl(

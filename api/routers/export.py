@@ -94,7 +94,7 @@ def _format_section(content: object, indent: int = 0) -> str:
 
 def _sections_to_markdown(project_id: str, run_id: str, sections: dict) -> str:
     lines = [
-        "# Mining Project Analysis Report",
+        "# Extract — Technical Analysis Report",
         "",
         f"**Project:** {project_id}  ",
         f"**Run ID:** {run_id}  ",
@@ -170,7 +170,7 @@ def _generate_pdf(project_id: str, run_id: str, sections: dict) -> bytes:
         def header(self):
             self.set_font("Helvetica", "B", 9)
             self.set_text_color(110, 110, 115)
-            self.cell(0, 8, "Mining Intelligence Platform - Confidential", align="L")
+            self.cell(0, 8, "Extract — Confidential", align="L")
             self.set_text_color(110, 110, 115)
             self.cell(0, 0, f"Page {self.page_no()}", align="R")
             self.ln(4)
@@ -193,7 +193,7 @@ def _generate_pdf(project_id: str, run_id: str, sections: dict) -> bytes:
     pdf.set_font("Helvetica", "B", 22)
     pdf.set_text_color(29, 29, 31)
     pdf.ln(4)
-    pdf.cell(0, 12, "Mining Project Analysis Report", ln=True)
+    pdf.cell(0, 12, "Extract — Technical Analysis Report", ln=True)
 
     # Meta
     pdf.set_font("Helvetica", "", 10)

@@ -1,6 +1,6 @@
 {
   "package": {
-    "productName": "Mining Intelligence",
+    "productName": "Extract",
     "version": "0.1.0"
   },
   "build": {
@@ -15,7 +15,7 @@
       "window": { "all": true },
       "fs": {
         "all": true,
-        "scope": ["$DOWNLOAD/**", "$DESKTOP/**", "$DOCUMENT/**"]
+        "scope": ["$HOME/**", "$DOWNLOAD/**", "$DESKTOP/**", "$DOCUMENT/**"]
       },
       "dialog": { "all": true },
       "path": { "all": true }
@@ -23,7 +23,7 @@
     "bundle": {
       "active": true,
       "targets": "all",
-      "identifier": "com.miningplatform.app",
+      "identifier": "com.extract.app",
       "icon": [],
       "macOS": {
         "minimumSystemVersion": "11.0"
@@ -34,14 +34,15 @@
     },
     "windows": [
       {
-        "title": "Mining Intelligence",
+        "title": "Extract",
         "width": 1400,
         "height": 900,
         "minWidth": 1000,
         "minHeight": 650,
         "resizable": true,
         "fullscreen": false,
-        "center": true
+        "center": true,
+        "fileDropEnabled": true
       }
     ]
   }

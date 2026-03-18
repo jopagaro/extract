@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { registerDropZone, unregisterDropZone } from "../../lib/tauriFileDrop";
 
 interface DropZoneProps {
   onFiles: (files: File[]) => void;
@@ -6,6 +7,7 @@ interface DropZoneProps {
 }
 
 const FORMATS = ["PDF", "DOCX", "XLSX", "CSV", "TXT", "PNG/JPG", "DXF"];
+const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI__;
 
 function UploadIcon() {
   return (
@@ -19,9 +21,43 @@ function UploadIcon() {
 export default function DropZone({ onFiles, disabled = false }: DropZoneProps) {
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dragCounter = useRef(0);
+  const onFilesRef = useRef(onFiles);
+  const disabledRef = useRef(disabled);
+  useEffect(() => { onFilesRef.current = onFiles; }, [onFiles]);
+  useEffect(() => { disabledRef.current = disabled; }, [disabled]);
 
-  function handleDrop(e: React.DragEvent) {
+  // ── Tauri: use singleton listener ────────────────────────────────────────
+  useEffect(() => {
+    if (!isTauri) return;
+    registerDropZone((files, hover) => {
+      setDragOver(hover);
+      if (files.length && !disabledRef.current) onFilesRef.current(files);
+    });
+    return () => unregisterDropZone();
+  }, []);
+
+  // ── Browser / dev: standard drag events ──────────────────────────────────
+  function handleDragEnter(e: React.DragEvent) {
+    if (isTauri) return;
     e.preventDefault();
+    dragCounter.current += 1;
+    if (!disabled) setDragOver(true);
+  }
+  function handleDragOver(e: React.DragEvent) {
+    if (isTauri) return;
+    e.preventDefault();
+  }
+  function handleDragLeave(e: React.DragEvent) {
+    if (isTauri) return;
+    e.preventDefault();
+    dragCounter.current -= 1;
+    if (dragCounter.current === 0) setDragOver(false);
+  }
+  function handleDrop(e: React.DragEvent) {
+    if (isTauri) return;
+    e.preventDefault();
+    dragCounter.current = 0;
     setDragOver(false);
     if (disabled) return;
     const files = Array.from(e.dataTransfer.files);
@@ -37,8 +73,9 @@ export default function DropZone({ onFiles, disabled = false }: DropZoneProps) {
   return (
     <div
       className={`drop-zone ${dragOver ? "drag-over" : ""}`}
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-      onDragLeave={() => setDragOver(false)}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       onClick={() => !disabled && inputRef.current?.click()}
       style={{ opacity: disabled ? 0.5 : 1, cursor: disabled ? "not-allowed" : "pointer" }}

@@ -1,5 +1,5 @@
 """
-Mining Intelligence Platform — FastAPI application entry point.
+Extract — FastAPI application entry point.
 
 Start the server:
     uvicorn api.main:app --reload --port 8000
@@ -10,10 +10,14 @@ Interactive docs at: http://localhost:8000/docs
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routers import analyze, export, ingest, projects, reports
+from api.routers import analyze, export, ingest, projects, reports, settings
+from api.routers.settings import load_and_apply_settings
+
+# Apply saved API keys to env before anything else loads
+load_and_apply_settings()
 
 app = FastAPI(
-    title="Mining Intelligence Platform API",
+    title="Extract API",
     version="0.1.0",
     description="Internal API — not for public access.",
 )
@@ -33,6 +37,7 @@ app.include_router(ingest.router)
 app.include_router(analyze.router)
 app.include_router(reports.router)
 app.include_router(export.router)
+app.include_router(settings.router)
 
 
 @app.get("/health", tags=["meta"])

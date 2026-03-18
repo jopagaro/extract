@@ -54,3 +54,8 @@ export interface ReportContent {
   project_id: string;
   sections: Record<string, unknown>;
 }
+
+export interface AppSettings {
+  openai_api_key?: string;
+  anthropic_api_key?: string;
+}
