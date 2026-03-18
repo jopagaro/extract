@@ -233,6 +233,8 @@ def _extract_cad(path: Path) -> str | None:
 
     parts = [f"[CAD File: {path.name}]"]
 
+    # ── Structured extraction ────────────────────────────────────────────────
+
     # Layer names (often encode geological or survey info)
     layers = [layer.dxf.name for layer in doc.layers]
     if layers:
@@ -263,7 +265,6 @@ def _extract_cad(path: Path) -> str | None:
                 pass
 
         elif dxftype == "INSERT":
-            # Block references — extract attribute values
             try:
                 for attrib in entity.attribs:
                     val = attrib.dxf.text.strip()
@@ -277,4 +278,53 @@ def _extract_cad(path: Path) -> str | None:
     if dimensions:
         parts.append("Dimensions: " + ", ".join(dimensions[:100]))
 
+    # ── Visual render + vision description ───────────────────────────────────
+
+    visual = _render_cad_visual(doc, path)
+    if visual:
+        parts.append(visual)
+
     return "\n\n".join(parts)
+
+
+def _render_cad_visual(doc: object, path: Path) -> str | None:
+    """Render DXF to a PNG and describe it with the available vision model."""
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not anthropic_key and not openai_key:
+        return None
+
+    try:
+        import io
+        import matplotlib
+        matplotlib.use("Agg")  # non-interactive, no display needed
+        import matplotlib.pyplot as plt
+        from ezdxf.addons.drawing import RenderContext, Frontend
+        from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
+
+        fig = plt.figure(figsize=(14, 10), facecolor="white")
+        ax = fig.add_axes([0, 0, 1, 1])
+        ax.set_facecolor("white")
+
+        ctx = RenderContext(doc)
+        backend = MatplotlibBackend(ax)
+        frontend = Frontend(ctx, backend)
+        frontend.draw_layout(doc.modelspace(), finalize=True)
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight",
+                    facecolor="white")
+        plt.close(fig)
+        buf.seek(0)
+
+        image_data = base64.standard_b64encode(buf.read()).decode("utf-8")
+
+        if anthropic_key:
+            description = _describe_image_anthropic(image_data, "image/png", anthropic_key)
+        else:
+            description = _describe_image_openai(image_data, "image/png", openai_key)  # type: ignore[arg-type]
+
+        return f"[CAD Visual Description]\n{description}"
+
+    except Exception:
+        return None
