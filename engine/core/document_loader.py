@@ -133,61 +133,90 @@ def _extract_docx(path: Path) -> str:
 # Images — described by Claude vision
 # ---------------------------------------------------------------------------
 
-def _extract_image(path: Path) -> str | None:
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        return f"[Image: {path.name} — ANTHROPIC_API_KEY not set, image could not be described]"
+_IMAGE_PROMPT = (
+    "This image is from a mining project technical document. "
+    "Describe in technical detail what you see — including any "
+    "geological features, cross-sections, drill hole locations or "
+    "collar maps, mine plans, pit designs, ore body outlines, "
+    "assay data tables, grade shell plots, production charts, "
+    "processing flow sheets, infrastructure layouts, or financial "
+    "figures. Extract any visible numbers, labels, coordinates, "
+    "scale bars, legends, or annotations. Be as specific as possible."
+)
 
-    import anthropic
+_MIME_MAP = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".tiff": "image/tiff",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+}
 
-    mime_map = {
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".png": "image/png",
-        ".tiff": "image/tiff",
-        ".gif": "image/gif",
-        ".webp": "image/webp",
-    }
-    media_type = mime_map.get(path.suffix.lower(), "image/jpeg")
 
+def _extract_image(path: Path) -> str:
+    mime_type = _MIME_MAP.get(path.suffix.lower(), "image/jpeg")
     image_data = base64.standard_b64encode(path.read_bytes()).decode("utf-8")
+
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    openai_key = os.getenv("OPENAI_API_KEY")
+
+    if anthropic_key:
+        description = _describe_image_anthropic(image_data, mime_type, anthropic_key)
+    elif openai_key:
+        description = _describe_image_openai(image_data, mime_type, openai_key)
+    else:
+        return f"[Image: {path.name} — no API key set, image could not be described]"
+
+    return f"[Image: {path.name}]\n{description}"
+
+
+def _describe_image_anthropic(image_data: str, mime_type: str, api_key: str) -> str:
+    import anthropic
 
     client = anthropic.Anthropic(api_key=api_key)
     response = client.messages.create(
         model="claude-opus-4-6",
         max_tokens=1024,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": image_data,
-                        },
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": mime_type,
+                        "data": image_data,
                     },
-                    {
-                        "type": "text",
-                        "text": (
-                            "This image is from a mining project technical document. "
-                            "Describe in technical detail what you see — including any "
-                            "geological features, cross-sections, drill hole locations or "
-                            "collar maps, mine plans, pit designs, ore body outlines, "
-                            "assay data tables, grade shell plots, production charts, "
-                            "processing flow sheets, infrastructure layouts, or financial "
-                            "figures. Extract any visible numbers, labels, coordinates, "
-                            "scale bars, legends, or annotations. Be as specific as possible."
-                        ),
-                    },
-                ],
-            }
-        ],
+                },
+                {"type": "text", "text": _IMAGE_PROMPT},
+            ],
+        }],
     )
+    return response.content[0].text.strip()
 
-    description = response.content[0].text.strip()
-    return f"[Image: {path.name}]\n{description}"
+
+def _describe_image_openai(image_data: str, mime_type: str, api_key: str) -> str:
+    from openai import OpenAI
+
+    client = OpenAI(api_key=api_key)
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        max_tokens=1024,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": _IMAGE_PROMPT},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{mime_type};base64,{image_data}",
+                    },
+                },
+            ],
+        }],
+    )
+    return response.choices[0].message.content.strip()
 
 
 # ---------------------------------------------------------------------------
