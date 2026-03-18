@@ -49,6 +49,10 @@ export async function renameProject(id: string, name: string): Promise<Project> 
   });
 }
 
+export async function archiveProject(id: string): Promise<void> {
+  return request(`/projects/${id}/archive`, { method: "POST" });
+}
+
 export async function deleteProject(id: string): Promise<void> {
   return request(`/projects/${id}`, { method: "DELETE" });
 }

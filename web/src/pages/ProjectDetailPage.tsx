@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
+  archiveProject,
   deleteFile,
-  deleteProject,
   deleteRun,
   getProject,
   getRun,
@@ -54,7 +54,7 @@ function DotsIcon() {
 
 // ── Project Settings Dropdown ───────────────────────────────────────────────
 
-function ProjectMenu({ onRename, onDelete }: { onRename: () => void; onDelete: () => void }) {
+function ProjectMenu({ onRename, onArchive }: { onRename: () => void; onArchive: () => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -90,11 +90,11 @@ function ProjectMenu({ onRename, onDelete }: { onRename: () => void; onDelete: (
             Share <span style={{ fontSize: 10, marginLeft: 4, color: "var(--text-tertiary)" }}>soon</span>
           </button>
           <div className="project-menu-divider" />
-          <button className="project-menu-item project-menu-item-danger" onClick={() => { setOpen(false); onDelete(); }}>
+          <button className="project-menu-item project-menu-item-danger" onClick={() => { setOpen(false); onArchive(); }}>
             <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+              <path d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4zM3 8h14v7a2 2 0 01-2 2H5a2 2 0 01-2-2V8zm5 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
             </svg>
-            Delete Project
+            Archive Project
           </button>
         </div>
       )}
@@ -273,14 +273,14 @@ export default function ProjectDetailPage() {
     }
   }
 
-  async function handleDelete() {
-    if (!window.confirm(`Delete "${project?.name}"? This removes all files and reports and cannot be undone.`)) return;
+  async function handleArchive() {
+    if (!window.confirm(`Archive "${project?.name}"? It will be moved to the _archive folder and hidden from your projects list.`)) return;
     try {
-      await deleteProject(id);
-      toast("Project deleted", "info");
+      await archiveProject(id);
+      toast(`"${project?.name}" archived`, "info");
       navigate("/projects");
     } catch {
-      toast("Failed to delete project", "error");
+      toast("Failed to archive project", "error");
     }
   }
 
@@ -333,7 +333,7 @@ export default function ProjectDetailPage() {
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <ProjectMenu onRename={() => setShowRename(true)} onDelete={handleDelete} />
+          <ProjectMenu onRename={() => setShowRename(true)} onArchive={handleArchive} />
           <button
             className="btn btn-primary btn-lg"
             onClick={handleRunAnalysis}

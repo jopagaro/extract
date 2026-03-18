@@ -147,9 +147,25 @@ def rename_project(project_id: str, body: dict) -> ProjectResponse:
     return _build_response(project_id, meta)
 
 
+@router.post("/{project_id}/archive", status_code=204)
+def archive_project(project_id: str) -> None:
+    """Move a project into the _archive subfolder. Hidden from main list but not deleted."""
+    src = project_root(project_id)
+    if not src.exists():
+        raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
+    archive_dir = get_projects_root() / "_archive"
+    archive_dir.mkdir(exist_ok=True)
+    dest = archive_dir / project_id
+    if dest.exists():
+        # Avoid collision — suffix with timestamp
+        from datetime import datetime, timezone
+        dest = archive_dir / f"{project_id}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    shutil.move(str(src), str(dest))
+
+
 @router.delete("/{project_id}", status_code=204)
 def delete_project(project_id: str) -> None:
-    """Delete a project folder and all its data. Irreversible."""
+    """Permanently delete a project and all its data."""
     root = project_root(project_id)
     if not root.exists():
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
