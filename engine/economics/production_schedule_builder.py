@@ -61,16 +61,23 @@ def build_production_schedule(
     Fill in contained_metal_produced for each period.
     Returns the same list with the derived field populated.
     Does not mutate input — returns new objects.
+
+    If contained_metal_produced is already set (> 0) on a period, it is used
+    as-is and the grade/recovery formula is skipped. This allows callers to
+    pass in values sourced directly from extraction rather than re-deriving them.
     """
+    from dataclasses import replace
     result: list[ProductionPeriod] = []
     for p in periods:
-        metal = calculate_contained_metal(
-            ore_tonnes=p.ore_tonnes,
-            head_grade=p.head_grade,
-            grade_unit=p.grade_unit,
-            recovery_percent=p.recovery_percent,
-            metal_unit=p.metal_unit,
-        )
-        from dataclasses import replace
-        result.append(replace(p, contained_metal_produced=metal))
+        if p.contained_metal_produced > 0:
+            result.append(p)
+        else:
+            metal = calculate_contained_metal(
+                ore_tonnes=p.ore_tonnes,
+                head_grade=p.head_grade,
+                grade_unit=p.grade_unit,
+                recovery_percent=p.recovery_percent,
+                metal_unit=p.metal_unit,
+            )
+            result.append(replace(p, contained_metal_produced=metal))
     return result

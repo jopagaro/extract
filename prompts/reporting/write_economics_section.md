@@ -5,12 +5,19 @@ Write the financial analysis section of the technical report for this mining pro
 ## Input
 
 You will receive:
-- DCF model outputs (NPV, IRR, payback at multiple discount rates)
-- CAPEX schedule (initial, sustaining, closure)
-- OPEX breakdown (mining, processing, G&A, unit costs)
-- Revenue model (production schedule, commodity prices, payable metal, royalties)
-- Sensitivity analysis results
-- Economic assumptions
+- Source document text and extracted project facts
+- Optionally: a `COMPUTED DCF MODEL` block containing verified model outputs
+
+## Computed Model Results (critical instruction)
+
+If a `COMPUTED DCF MODEL:` block is present in the Additional Context, you MUST use those
+exact figures for NPV, IRR, payback period, AISC, and sensitivity analysis. These numbers
+were computed by a deterministic financial model from data extracted from the source documents.
+Do not re-derive, restate, or adjust them. If the block includes `assumptions_notes`, disclose
+any defaults that were applied (e.g. assumed discount rate, assumed recovery percentage).
+
+If no `COMPUTED DCF MODEL:` block is present, extract economic figures from the source
+documents and report them as stated, noting the source.
 
 ## Instructions
 

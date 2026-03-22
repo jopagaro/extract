@@ -4,6 +4,7 @@ import { ToastProvider } from "./components/shared/Toast";
 import ComparisonPage from "./pages/ComparisonPage";
 import ProjectDetailPage from "./pages/ProjectDetailPage";
 import ProjectsPage from "./pages/ProjectsPage";
+import ReportDemoPage from "./pages/ReportDemoPage";
 import ReportPage from "./pages/ReportPage";
 import SettingsPage from "./pages/SettingsPage";
 
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/projects/:projectId/report/:runId" element={<ReportPage />} />
           <Route path="/projects/:projectId/compare" element={<ComparisonPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/demo" element={<ReportDemoPage />} />
           <Route path="/reports" element={<Navigate to="/projects" replace />} />
         </Routes>
       </Layout>

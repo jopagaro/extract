@@ -172,36 +172,114 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
         facts_str = json.dumps(facts, indent=2)
         combined = f"PROJECT FACTS:\n{facts_str}\n\nSOURCE DOCUMENTS:\n{truncated}"
 
-        # ── Step 3: Write report sections in parallel ───────────────────────
+        # ── Step 2.5: Extract economic assumptions + mine plan in parallel ──
+        update("Extracting economic data")
+
+        from engine.llm.extraction.extract_economic_assumptions import extract_economic_assumptions
+        from engine.llm.extraction.extract_mine_plan_inputs import extract_mine_plan_inputs
+
+        async def _extract_econ() -> tuple[dict, dict]:
+            econ, mine = await asyncio.gather(
+                extract_economic_assumptions(truncated, run_id=run_id),
+                extract_mine_plan_inputs(truncated, run_id=run_id),
+            )
+            return _extract_response_data(econ), _extract_response_data(mine)
+
+        econ_assumptions, mine_plan = asyncio.run(_extract_econ())
+
+        # ── Step 2.6: Run DCF model (non-fatal — falls back to LLM-only) ───
+        update("Running economics model")
+
+        dcf_output: dict | None = None
+        try:
+            import dataclasses
+            from engine.economics.input_builder import build_input_book_from_llm
+            from engine.economics.dcf_model import run_dcf
+            from engine.economics.sensitivity_runner import run_sensitivity
+
+            input_book = build_input_book_from_llm(
+                project_id=project_id,
+                economic_assumptions=econ_assumptions,
+                mine_plan=mine_plan,
+                project_facts=facts,
+            )
+            if input_book:
+                cash_flows, summary = run_dcf(input_book)
+                sensitivity = run_sensitivity(input_book)
+                dcf_output = {
+                    "model_ran": True,
+                    "assumptions_notes": input_book.notes,
+                    "summary": summary.to_dict(),
+                    "cash_flow_table": [dataclasses.asdict(cf) for cf in cash_flows],
+                    "sensitivity": sensitivity.to_dict(),
+                }
+            else:
+                dcf_output = {
+                    "model_ran": False,
+                    "reason": "Insufficient data to build economics model from source documents.",
+                }
+        except Exception as dcf_exc:
+            import traceback
+            dcf_output = {
+                "model_ran": False,
+                "reason": f"DCF model error: {dcf_exc}",
+            }
+
+        _save_section(project_id, run_id, "06_dcf_model", dcf_output)
+
+        # ── Step 3: Write specialist sections in parallel ──────────────────
         update("Writing report sections")
 
-        from engine.llm.reporting.write_executive_summary import write_executive_summary
         from engine.llm.reporting.write_geology_section import write_geology_section
         from engine.llm.reporting.write_economics_section import write_economics_section
         from engine.llm.reporting.write_risk_section import write_risk_section
 
-        async def _write_sections() -> tuple[dict, dict, dict, dict]:
-            exec_sum, geology, economics, risks = await asyncio.gather(
-                write_executive_summary(combined, run_id=run_id),
+        dcf_context = (
+            "COMPUTED DCF MODEL:\n" + json.dumps(dcf_output, indent=2)
+            if dcf_output and dcf_output.get("model_ran")
+            else None
+        )
+
+        async def _write_sections() -> tuple[dict, dict, dict]:
+            geology, economics, risks = await asyncio.gather(
                 write_geology_section(combined, run_id=run_id),
-                write_economics_section(combined, run_id=run_id),
+                write_economics_section(combined, run_id=run_id, extra_context=dcf_context),
                 write_risk_section(combined, run_id=run_id),
             )
             return (
-                _extract_response_data(exec_sum),
                 _extract_response_data(geology),
                 _extract_response_data(economics),
                 _extract_response_data(risks),
             )
 
-        exec_sum, geology, economics, risks = asyncio.run(_write_sections())
+        geology, economics, risks = asyncio.run(_write_sections())
 
-        _save_section(project_id, run_id, "02_executive_summary", exec_sum)
         _save_section(project_id, run_id, "03_geology", geology)
         _save_section(project_id, run_id, "04_economics", economics)
         _save_section(project_id, run_id, "05_risks", risks)
 
-        # ── Step 4: Save data sources notice ───────────────────────────────
+        # ── Step 4: Assemble narrative synthesis ────────────────────────────
+        update("Writing analyst narrative")
+
+        from engine.llm.reporting.assemble_report_sections import assemble_report_sections
+
+        assembly_input = json.dumps({
+            "project_facts": facts,
+            "geology": geology,
+            "economics": economics,
+            "risks": risks,
+            "dcf_model": dcf_output,
+            "source_files": source_files,
+        }, indent=2)
+
+        async def _assemble() -> dict:
+            r = await assemble_report_sections(assembly_input, run_id=run_id)
+            return _extract_response_data(r)
+
+        assembly = asyncio.run(_assemble())
+        _save_section(project_id, run_id, "07_assembly", assembly)
+
+        # ── Step 5: Save data sources notice ───────────────────────────────
         update("Finalising report")
 
         sources_notice = {
@@ -216,10 +294,11 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
             ),
             "data_coverage": {
                 "project_facts": bool(facts),
-                "executive_summary": bool(exec_sum),
                 "geology": bool(geology),
                 "economics": bool(economics),
                 "risks": bool(risks),
+                "dcf_model_ran": bool(dcf_output and dcf_output.get("model_ran")),
+                "narrative_assembled": bool(assembly),
             }
         }
         _save_section(project_id, run_id, "00_data_sources", sources_notice)
