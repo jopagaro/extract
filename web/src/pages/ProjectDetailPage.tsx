@@ -4,23 +4,25 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 // ── Analysis step pills ─────────────────────────────────────────────────────
 
 const ANALYSIS_STEPS = [
-  { id: "loading",   label: "/loading",   order: 0, delay: 0 },
-  { id: "extract",   label: "/extract",   order: 1, delay: 0 },
-  { id: "economics", label: "/economics", order: 2, delay: 0 },
-  { id: "writing",   label: "/writing",   order: 3, delay: 0 },
-  { id: "report",    label: "/report",    order: 4, delay: 0 },
+  { id: "loading",      label: "/loading",      order: 0, delay: 0 },
+  { id: "extract",      label: "/extract",      order: 1, delay: 0 },
+  { id: "intelligence", label: "/intelligence", order: 2, delay: 0 },
+  { id: "economics",    label: "/economics",    order: 3, delay: 0 },
+  { id: "writing",      label: "/writing",      order: 4, delay: 0 },
+  { id: "report",       label: "/report",       order: 5, delay: 0 },
 ] as const;
 
 const BACKEND_STEP_ORDER: Record<string, number> = {
-  "queued":                     -1,
-  "Loading documents":           0,
-  "Extracting project facts":    1,
-  "Extracting economic data":    2,
-  "Running economics model":     2,
-  "Writing report sections":     3,
-  "Writing analyst narrative":   3,
-  "Finalising report":           4,
-  "Complete":                    5,
+  "queued":                          -1,
+  "Loading documents":                0,
+  "Extracting project facts":         1,
+  "Gathering market intelligence":    2,
+  "Extracting economic data":         3,
+  "Running economics model":          3,
+  "Writing report sections":          4,
+  "Writing analyst narrative":        4,
+  "Finalising report":                5,
+  "Complete":                         6,
 };
 
 function getStepState(

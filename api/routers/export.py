@@ -48,13 +48,14 @@ def _get_all_sections(project_id: str, run_id: str) -> dict[str, object]:
 
 SECTION_TITLES = {
     # Current pipeline sections
-    "07_assembly":      "Analyst Narrative",
-    "01_project_facts": "Project Facts",
-    "03_geology":       "Geology & Resources",
-    "04_economics":     "Economics & Financial Analysis",
-    "05_risks":         "Risks & Uncertainties",
-    "06_dcf_model":     "DCF Financial Model",
-    "00_data_sources":  "Appendix A — Source Documents",
+    "07_assembly":           "Analyst Narrative",
+    "02_market_intelligence": "Market Intelligence",
+    "01_project_facts":      "Project Facts",
+    "03_geology":            "Geology & Resources",
+    "04_economics":          "Economics & Financial Analysis",
+    "05_risks":              "Risks & Uncertainties",
+    "06_dcf_model":          "DCF Financial Model",
+    "00_data_sources":       "Appendix A — Source Documents",
     # Legacy keys (kept for backward compat)
     "project_facts":        "Project Facts",
     "geology_summary":      "Geology",
@@ -261,6 +262,7 @@ def _write_pdf_content(pdf, content: object, page_w: float) -> None:
 # Section display order for PDF
 _PDF_SECTION_ORDER = [
     "07_assembly",
+    "02_market_intelligence",
     "03_geology",
     "04_economics",
     "05_risks",
@@ -270,13 +272,14 @@ _PDF_SECTION_ORDER = [
 ]
 
 _PDF_SECTION_META: dict[str, dict] = {
-    "07_assembly":      {"title": "Analyst Narrative",               "subtitle": None,                                        "num": None,  "layer": "narrative"},
-    "03_geology":       {"title": "Geology & Resources",             "subtitle": "Deposit geology and resource assessment",     "num": "1",   "layer": "detail"},
-    "04_economics":     {"title": "Economics & Financial Analysis",  "subtitle": "Capital costs, operating costs, projections", "num": "2",   "layer": "detail"},
-    "05_risks":         {"title": "Risks & Uncertainties",           "subtitle": "Material risks and mitigations",              "num": "3",   "layer": "detail"},
-    "06_dcf_model":     {"title": "DCF Financial Model",             "subtitle": "Computed discounted cash flow analysis",      "num": "4",   "layer": "detail"},
-    "00_data_sources":  {"title": "Appendix A — Source Documents",  "subtitle": "All documents used in this analysis",         "num": None,  "layer": "appendix"},
-    "01_project_facts": {"title": "Project Facts",                   "subtitle": None,                                        "num": None,  "layer": "appendix"},
+    "07_assembly":            {"title": "Analyst Narrative",                  "subtitle": None,                                              "num": None,  "layer": "narrative"},
+    "02_market_intelligence": {"title": "Market Intelligence",                "subtitle": "Live prices, web-sourced context, macro factors",  "num": None,  "layer": "market"},
+    "03_geology":             {"title": "Geology & Resources",                "subtitle": "Deposit geology and resource assessment",           "num": "1",   "layer": "detail"},
+    "04_economics":           {"title": "Economics & Financial Analysis",     "subtitle": "Capital costs, operating costs, projections",       "num": "2",   "layer": "detail"},
+    "05_risks":               {"title": "Risks & Uncertainties",              "subtitle": "Material risks and mitigations",                   "num": "3",   "layer": "detail"},
+    "06_dcf_model":           {"title": "DCF Financial Model",                "subtitle": "Computed discounted cash flow analysis",            "num": "4",   "layer": "detail"},
+    "00_data_sources":        {"title": "Appendix A - Source Documents",      "subtitle": "All documents used in this analysis",              "num": None,  "layer": "appendix"},
+    "01_project_facts":       {"title": "Project Facts",                      "subtitle": None,                                              "num": None,  "layer": "appendix"},
 }
 
 
@@ -404,8 +407,98 @@ def _generate_pdf(project_id: str, run_id: str, sections: dict) -> bytes:
         pdf.add_page()
         _write_pdf_section_header(pdf, title, subtitle, num, page_w)
 
+        # Market intelligence section
+        if section_key == "02_market_intelligence" and isinstance(content, dict):
+            if content.get("error"):
+                pdf.set_font("Helvetica", "I", 10)
+                pdf.set_text_color(107, 114, 128)
+                pdf.multi_cell(page_w, 5, _safe(str(content["error"])))
+            else:
+                # As-of date notice
+                gathered_at = content.get("gathered_at", "")
+                if gathered_at:
+                    pdf.set_font("Helvetica", "I", 9)
+                    pdf.set_text_color(107, 114, 128)
+                    pdf.cell(0, 5, _safe(f"Data gathered: {gathered_at}"), ln=True)
+                    pdf.ln(3)
+
+                # Live price callouts (from yfinance)
+                live_prices = content.get("live_prices", {}).get("prices", {})
+                macro_inds  = content.get("macro_indicators", {}).get("indicators", {})
+                all_prices  = list(live_prices.items()) + [
+                    (k, {"price": v["value"], "unit": v["unit"]})
+                    for k, v in macro_inds.items()
+                    if v.get("value") is not None
+                ]
+
+                if all_prices:
+                    pdf.set_font("Helvetica", "B", 8)
+                    pdf.set_text_color(156, 163, 175)
+                    pdf.cell(0, 5, "LIVE MARKET DATA", ln=True)
+                    pdf.ln(2)
+                    col_count = min(4, len(all_prices))
+                    col = page_w / col_count
+                    y0 = pdf.get_y()
+                    for i, (name, data) in enumerate(all_prices[:8]):
+                        x = pdf.l_margin + (i % col_count) * col
+                        y = y0 + (i // col_count) * 20
+                        price_val = data.get("price") or data.get("value") or ""
+                        price_str = f"{price_val:,.2f}" if isinstance(price_val, (int, float)) else str(price_val)
+                        unit_str  = _safe(str(data.get("unit", "")))
+                        pdf.set_xy(x, y)
+                        pdf.set_font("Helvetica", "B", 12)
+                        pdf.set_text_color(176, 141, 60)   # gold accent
+                        pdf.cell(col - 2, 6, _safe(f"{price_str} {unit_str}"), ln=False)
+                        pdf.set_xy(x, y + 7)
+                        pdf.set_font("Helvetica", "", 7.5)
+                        pdf.set_text_color(107, 114, 128)
+                        pdf.cell(col - 2, 4, _safe(name.replace("_", " ").title()), ln=False)
+                    rows = (len(all_prices[:8]) + col_count - 1) // col_count
+                    pdf.set_y(y0 + rows * 20 + 4)
+                    pdf.set_draw_color(229, 231, 235)
+                    pdf.line(pdf.l_margin, pdf.get_y(), pdf.l_margin + page_w, pdf.get_y())
+                    pdf.ln(6)
+
+                # Project intelligence
+                proj_intel = content.get("project_intelligence", {})
+                if proj_intel.get("findings"):
+                    pdf.set_font("Helvetica", "B", 8)
+                    pdf.set_text_color(156, 163, 175)
+                    subject = _safe(proj_intel.get("search_subject", "Project"))
+                    pdf.cell(0, 5, f"PROJECT INTELLIGENCE: {subject}", ln=True)
+                    pdf.ln(2)
+                    _write_pdf_prose(pdf, proj_intel["findings"], page_w, font_size=10)
+                    pdf.ln(4)
+
+                # Commodity market
+                comm = content.get("commodity_market", {})
+                if comm.get("analysis"):
+                    pdf.set_font("Helvetica", "B", 8)
+                    pdf.set_text_color(156, 163, 175)
+                    pdf.cell(0, 5, _safe(f"COMMODITY MARKET: {comm.get('commodity', '').upper()}"), ln=True)
+                    pdf.ln(2)
+                    _write_pdf_prose(pdf, comm["analysis"], page_w, font_size=10)
+                    pdf.ln(4)
+
+                # Macro context
+                macro = content.get("macro_context", {})
+                if macro.get("analysis"):
+                    pdf.set_font("Helvetica", "B", 8)
+                    pdf.set_text_color(156, 163, 175)
+                    pdf.cell(0, 5, "MACROECONOMIC CONTEXT", ln=True)
+                    pdf.ln(2)
+                    _write_pdf_prose(pdf, macro["analysis"], page_w, font_size=10)
+
+                # Notice
+                notice = content.get("notice")
+                if notice:
+                    pdf.ln(6)
+                    pdf.set_font("Helvetica", "I", 8)
+                    pdf.set_text_color(156, 163, 175)
+                    pdf.multi_cell(page_w, 4.5, _safe(notice))
+
         # Narrative section — extract prose fields directly
-        if section_key == "07_assembly" and isinstance(content, dict):
+        elif section_key == "07_assembly" and isinstance(content, dict):
             # Key callouts table
             callouts = content.get("key_callouts")
             if isinstance(callouts, list) and callouts:

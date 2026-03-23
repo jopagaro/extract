@@ -179,9 +179,87 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
         _save_section(project_id, run_id, "01_project_facts", facts)
 
         facts_str = json.dumps(facts, indent=2)
-        combined = f"PROJECT FACTS:\n{facts_str}\n\nSOURCE DOCUMENTS:\n{truncated}"
 
-        # ── Step 2.5: Extract economic assumptions + mine plan in parallel ──
+        # ── Step 2.5: Gather market intelligence (live prices + web search) ─
+        update("Gathering market intelligence")
+
+        market_intel: dict = {}
+        try:
+            from engine.market.live_prices import (
+                get_commodity_prices,
+                get_macro_snapshot,
+                build_price_context_string,
+            )
+            from engine.llm.extraction.gather_market_intelligence import (
+                gather_market_intelligence,
+            )
+
+            commodity_field = (
+                facts.get("commodity")
+                or facts.get("primary_commodity")
+                or facts.get("metal")
+                or "gold"
+            )
+
+            # Fetch live prices and macro in a thread (yfinance is sync)
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+                price_future = pool.submit(get_commodity_prices, commodity_field)
+                macro_future = pool.submit(get_macro_snapshot)
+                commodity_prices = price_future.result(timeout=20)
+                macro_snapshot   = macro_future.result(timeout=20)
+
+            # Web intelligence searches (parallel, via GPT-4o search model)
+            async def _gather() -> dict:
+                return await gather_market_intelligence(
+                    project_facts=facts,
+                    commodity_prices=commodity_prices,
+                    macro_snapshot=macro_snapshot,
+                    run_id=run_id,
+                )
+
+            market_intel = asyncio.run(_gather())
+            _save_section(project_id, run_id, "02_market_intelligence", market_intel)
+
+            # Build a plain-text price context string to inject into downstream prompts
+            price_context = build_price_context_string(
+                commodity_prices, macro_snapshot,
+                as_of_date=market_intel.get("gathered_at"),
+            )
+
+        except Exception as mi_exc:
+            import traceback
+            market_intel = {
+                "error": f"Market intelligence unavailable: {mi_exc}",
+                "traceback": traceback.format_exc()[:600],
+            }
+            _save_section(project_id, run_id, "02_market_intelligence", market_intel)
+            price_context = ""
+
+        # Build combined context — project facts + source docs + live market data
+        market_context_block = ""
+        if market_intel and not market_intel.get("error"):
+            proj_intel   = market_intel.get("project_intelligence", {})
+            comm_market  = market_intel.get("commodity_market", {})
+            macro_ctx    = market_intel.get("macro_context", {})
+
+            market_context_block = "\n\n---\n\nMARKET INTELLIGENCE (web-sourced, as of analysis date):\n"
+            if price_context:
+                market_context_block += f"\n{price_context}\n"
+            if proj_intel.get("findings"):
+                market_context_block += f"\nPROJECT INTELLIGENCE:\n{proj_intel['findings']}\n"
+            if comm_market.get("analysis"):
+                market_context_block += f"\nCOMMODITY MARKET:\n{comm_market['analysis']}\n"
+            if macro_ctx.get("analysis"):
+                market_context_block += f"\nMACROECONOMIC CONTEXT:\n{macro_ctx['analysis']}\n"
+
+        combined = (
+            f"PROJECT FACTS:\n{facts_str}"
+            f"\n\nSOURCE DOCUMENTS:\n{truncated}"
+            f"{market_context_block}"
+        )
+
+        # ── Step 2.6: Extract economic assumptions + mine plan in parallel ──
         update("Extracting economic data")
 
         from engine.llm.extraction.extract_economic_assumptions import extract_economic_assumptions
