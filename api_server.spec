@@ -28,7 +28,24 @@ a = Analysis(
         (str(ROOT / "_project_template"), "_project_template"),
     ],
     hiddenimports=[
-        # uvicorn internals — not auto-detected
+        # ── App modules (passed as strings to uvicorn, not auto-detected) ──
+        "api",
+        "api.main",
+        "api.routers",
+        "api.routers.projects",
+        "api.routers.ingest",
+        "api.routers.analyze",
+        "api.routers.reports",
+        "api.routers.export",
+        "api.routers.settings",
+        "api.routers.activate",
+        "engine",
+        "engine.core",
+        "engine.core.document_loader",
+        "engine.core.llm_router",
+        "engine.core.paths",
+        "engine.models",
+        # ── uvicorn internals — not auto-detected
         "uvicorn",
         "uvicorn.logging",
         "uvicorn.loops",

@@ -6,19 +6,21 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 const ANALYSIS_STEPS = [
   { id: "loading",   label: "/loading",   order: 0, delay: 0 },
   { id: "extract",   label: "/extract",   order: 1, delay: 0 },
-  { id: "geology",   label: "/geology",   order: 2, delay: 0 },
-  { id: "economics", label: "/economics", order: 2, delay: 0.45 },
-  { id: "risks",     label: "/risks",     order: 2, delay: 0.9 },
-  { id: "report",    label: "/report",    order: 3, delay: 0 },
+  { id: "economics", label: "/economics", order: 2, delay: 0 },
+  { id: "writing",   label: "/writing",   order: 3, delay: 0 },
+  { id: "report",    label: "/report",    order: 4, delay: 0 },
 ] as const;
 
 const BACKEND_STEP_ORDER: Record<string, number> = {
-  "queued":                    0,
-  "Loading documents":         0,
-  "Extracting project facts":  1,
-  "Writing report sections":   2,
-  "Finalising report":         3,
-  "Complete":                  4,
+  "queued":                     -1,
+  "Loading documents":           0,
+  "Extracting project facts":    1,
+  "Extracting economic data":    2,
+  "Running economics model":     2,
+  "Writing report sections":     3,
+  "Writing analyst narrative":   3,
+  "Finalising report":           4,
+  "Complete":                    5,
 };
 
 function getStepState(
@@ -28,7 +30,7 @@ function getStepState(
 ): "pending" | "active" | "done" {
   if (runStatus === "complete") return "done";
   if (runStatus === "failed") return "pending";
-  const current = BACKEND_STEP_ORDER[currentStep] ?? 0;
+  const current = BACKEND_STEP_ORDER[currentStep] ?? -1;
   if (current > step.order) return "done";
   if (current === step.order) return "active";
   return "pending";

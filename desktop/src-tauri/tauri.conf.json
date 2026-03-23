@@ -31,7 +31,9 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-
+      "resources": [
+        "binaries/api-server/**/*"
+      ],
       "macOS": {
         "minimumSystemVersion": "11.0",
         "entitlements": "entitlements.plist"
