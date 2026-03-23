@@ -175,7 +175,6 @@ export default function ProjectsPage() {
         </div>
       ) : projects.length === 0 ? (
         <div className="empty-state">
-          <MineIcon />
           <h3>No projects yet</h3>
           <p>Create your first project to get started</p>
           <br />

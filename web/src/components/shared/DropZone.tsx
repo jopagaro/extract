@@ -11,9 +11,9 @@ const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI__;
 
 function UploadIcon() {
   return (
-    <svg className="drop-zone-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M24 32V16M24 16l-7 7M24 16l7 7" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M8 36a8 8 0 010-16h2.5M40 36a8 8 0 000-16h-2.5M16 24a8 8 0 0116 0" strokeLinecap="round" />
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" style={{ flexShrink: 0 }}>
+      <path d="M10 13V7M10 7L7 10M10 7l3 3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 14a4 4 0 010-8h.5M17 14a4 4 0 000-8h-.5" strokeLinecap="round" />
     </svg>
   );
 }
@@ -80,15 +80,14 @@ export default function DropZone({ onFiles, disabled = false }: DropZoneProps) {
       onClick={() => !disabled && inputRef.current?.click()}
       style={{ opacity: disabled ? 0.5 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
     >
-      <UploadIcon />
-      <div className="drop-zone-text">Drop files here or click to browse</div>
-      <div className="drop-zone-sub">
-        Upload all documents related to this project — technical reports, drill data, financial models
-      </div>
-      <div className="drop-zone-formats">
-        {FORMATS.map((f) => (
-          <span key={f} className="format-chip">.{f.toLowerCase()}</span>
-        ))}
+      <div className="drop-zone-inner">
+        <UploadIcon />
+        <div className="drop-zone-text">Drop files or <span className="drop-zone-link">click to browse</span></div>
+        <div className="drop-zone-formats">
+          {FORMATS.map((f) => (
+            <span key={f} className="format-chip">.{f.toLowerCase()}</span>
+          ))}
+        </div>
       </div>
       <input
         ref={inputRef}

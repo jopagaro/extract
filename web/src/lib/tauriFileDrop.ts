@@ -22,7 +22,7 @@ async function flushPaths() {
     try {
       const bytes = await readBinaryFile(filePath);
       const name = filePath.replace(/\\/g, "/").split("/").pop() ?? "file";
-      files.push(new File([bytes], name));
+      files.push(new File([bytes.buffer as ArrayBuffer], name));
     } catch (err) {
       console.warn("Could not read dropped file:", filePath, err);
     }
