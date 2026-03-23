@@ -148,16 +148,34 @@ def _flatten_for_pdf(content: object, lines: list[str], indent: int = 0) -> None
 
 
 def _safe(text: str) -> str:
-    """Replace Unicode characters that Helvetica (Latin-1) can't encode."""
+    """Sanitise text so Helvetica (Latin-1) can always encode it.
+
+    Applies known unicode → ASCII replacements first, then falls back to
+    latin-1 encode/decode with replacement for anything still outside range.
+    """
     replacements = {
-        "\u2014": "-", "\u2013": "-", "\u2012": "-",  # dashes
-        "\u2018": "'", "\u2019": "'",                   # smart single quotes
-        "\u201c": '"', "\u201d": '"',                   # smart double quotes
-        "\u2022": "*", "\u2026": "...",                  # bullet, ellipsis
-        "\u00b0": "deg", "\u00b2": "2", "\u00b3": "3",  # degree, superscripts
+        # Dashes
+        "\u2014": "-", "\u2013": "-", "\u2012": "-", "\u2015": "-",
+        # Quotes
+        "\u2018": "'", "\u2019": "'", "\u201a": "'",
+        "\u201c": '"', "\u201d": '"', "\u201e": '"',
+        # Bullets / ellipsis
+        "\u2022": "-", "\u2023": "-", "\u25cf": "-",
+        "\u2026": "...",
+        # Math / units
+        "\u00b0": "deg", "\u00b2": "2", "\u00b3": "3",
+        "\u00d7": "x",  "\u00f7": "/", "\u2248": "~",
+        "\u2264": "<=", "\u2265": ">=",
+        "\u00b1": "+/-",
+        # Currency
+        "\u20ac": "EUR", "\u00a3": "GBP", "\u00a5": "JPY",
+        # Misc
+        "\u00ae": "(R)", "\u00a9": "(C)", "\u2122": "(TM)",
+        "\u00a0": " ",   # non-breaking space
     }
     for char, replacement in replacements.items():
         text = text.replace(char, replacement)
+    # Final safety net: drop anything still outside Latin-1
     return text.encode("latin-1", errors="replace").decode("latin-1")
 
 
@@ -275,7 +293,7 @@ def _generate_pdf(project_id: str, run_id: str, sections: dict) -> bytes:
                 return  # cover page — no running header
             self.set_font("Helvetica", "", 8)
             self.set_text_color(156, 163, 175)
-            self.cell(0, 6, "Extract — Confidential", align="L")
+            self.cell(0, 6, "Extract - Confidential", align="L")
             self.cell(0, 0, f"Page {self.page_no() - 1}", align="R")
             self.ln(3)
             self.set_draw_color(229, 231, 235)
@@ -304,7 +322,7 @@ def _generate_pdf(project_id: str, run_id: str, sections: dict) -> bytes:
     # Eyebrow
     pdf.set_font("Helvetica", "B", 8)
     pdf.set_text_color(176, 141, 60)
-    pdf.cell(0, 5, "EXTRACT — TECHNICAL ANALYSIS REPORT", ln=True)
+    pdf.cell(0, 5, _safe("EXTRACT \u2014 TECHNICAL ANALYSIS REPORT"), ln=True)
     pdf.ln(6)
 
     # Project name
