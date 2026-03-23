@@ -1,0 +1,132 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            suffix: aarch64.dmg
+          - platform: macos-13
+            target: x86_64-apple-darwin
+            suffix: x64.dmg
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            suffix: x64-setup.exe
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install macOS deps
+        if: runner.os == 'macOS'
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Install frontend deps
+        run: pnpm install
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        with:
+          projectPath: desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: Extract ${{ github.ref_name }}
+          releaseBody: |
+            Download Extract for macOS or Windows below.
+
+            **macOS (Apple Silicon):** `Extract_*_aarch64.dmg`
+            **macOS (Intel):** `Extract_*_x64.dmg`
+            **Windows:** `Extract_*_x64-setup.exe`
+          releaseDraft: false
+          prerelease: false
+          args: --target ${{ matrix.target }}
+
+  publish-update-manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download release assets list
+        id: assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ github.ref_name }}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          ASSETS=$(gh release view "$VERSION" --json assets --jq '.assets[].name' 2>/dev/null || echo "")
+          echo "Assets: $ASSETS"
+
+      - name: Generate latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ github.ref_name }}"
+          REPO="jopagaro/mining-intelligence-engine"
+          BASE_URL="https://github.com/$REPO/releases/download/$VERSION"
+          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          # Fetch signatures from release
+          get_sig() {
+            gh release download "$VERSION" -p "$1" -D /tmp 2>/dev/null && cat "/tmp/$1" || echo ""
+          }
+
+          SIG_ARM=$(get_sig "Extract_${VERSION#v}_aarch64.dmg.sig")
+          SIG_X64=$(get_sig "Extract_${VERSION#v}_x64.dmg.sig")
+          SIG_WIN=$(get_sig "Extract_${VERSION#v}_x64-setup.exe.sig")
+
+          cat > latest.json <<EOF
+          {
+            "version": "$VERSION",
+            "notes": "See release notes on GitHub.",
+            "pub_date": "$PUB_DATE",
+            "platforms": {
+              "darwin-aarch64": {
+                "signature": "$SIG_ARM",
+                "url": "$BASE_URL/Extract_${VERSION#v}_aarch64.dmg"
+              },
+              "darwin-x86_64": {
+                "signature": "$SIG_X64",
+                "url": "$BASE_URL/Extract_${VERSION#v}_x64.dmg"
+              },
+              "windows-x86_64": {
+                "signature": "$SIG_WIN",
+                "url": "$BASE_URL/Extract_${VERSION#v}_x64-setup.exe"
+              }
+            }
+          }
+          EOF
+          cat latest.json
+
+      - name: Upload latest.json to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" latest.json --clobber
