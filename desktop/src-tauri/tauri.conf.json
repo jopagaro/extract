@@ -46,7 +46,7 @@
       "active": true,
       "dialog": true,
       "endpoints": [
-        "https://github.com/jopagaro/mining-intelligence-engine/releases/latest/download/latest.json"
+        "https://github.com/jopagaro/extract/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE0NjdCMUQ4OEY0NkRCQ0YKUldUUDIwYVAyTEZuRkVYYWxGaW4vM3hjVDQ3YXRtUzFGWTNOZkRubFNOcjk1eXNOUlE1UW1XVWEK"
     },

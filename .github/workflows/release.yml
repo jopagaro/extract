@@ -89,7 +89,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ github.ref_name }}"
-          REPO="jopagaro/mining-intelligence-engine"
+          REPO="jopagaro/extract"
           BASE_URL="https://github.com/$REPO/releases/download/$VERSION"
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 

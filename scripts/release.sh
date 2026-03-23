@@ -46,7 +46,7 @@ cat > "$ROOT/latest.json" <<EOF
   "platforms": {
     "darwin-aarch64": {
       "signature": "${SIGNATURE}",
-      "url": "https://github.com/jopagaro/mining-intelligence-engine/releases/download/v${VERSION}/Extract_${VERSION}_aarch64.dmg"
+      "url": "https://github.com/jopagaro/extract/releases/download/v${VERSION}/Extract_${VERSION}_aarch64.dmg"
     }
   }
 }
@@ -68,4 +68,4 @@ gh release create "v${VERSION}" "$DMG" "latest.json" \
   --notes "$NOTES"
 echo ""
 echo "✅ Release v${VERSION} published!"
-echo "   DMG: https://github.com/jopagaro/mining-intelligence-engine/releases/download/v${VERSION}/Extract_${VERSION}_aarch64.dmg"
+echo "   DMG: https://github.com/jopagaro/extract/releases/download/v${VERSION}/Extract_${VERSION}_aarch64.dmg"
