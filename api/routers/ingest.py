@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from api.models.ingest_request import FileList, FileRecord, IngestResponse
 from engine.core.paths import project_root
@@ -121,6 +121,28 @@ def list_files(project_id: str) -> FileList:
     registry = _load_registry(project_id)
     records = [FileRecord(**v) for v in registry.values()]
     return FileList(project_id=project_id, files=records, total=len(records))
+
+
+@router.get("/{filename}/content")
+def serve_file_content(project_id: str, filename: str) -> Response:
+    """Serve a raw project file (images, renders) by filename for report display."""
+    _project_exists(project_id)
+    # Block path traversal
+    if "/" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    # Check raw/documents first, then raw/renders (CAD renders)
+    raw_dir = project_root(project_id) / "raw" / "documents"
+    renders_dir = project_root(project_id) / "raw" / "renders"
+
+    file_path = raw_dir / filename
+    if not file_path.exists():
+        file_path = renders_dir / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"File '{filename}' not found")
+
+    mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    return Response(content=file_path.read_bytes(), media_type=mime)
 
 
 @router.delete("/{filename}", status_code=204)

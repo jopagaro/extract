@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<!--
+  Extract — Purchase Page
+  ========================
+  Drop this into your website and fill in the three placeholders marked ← REPLACE.
+
+  How it works:
+    1. User clicks "Buy Extract" → Stripe Checkout opens (hosted by Stripe).
+    2. On success Stripe redirects to /success?session_id={CHECKOUT_SESSION_ID}.
+    3. Your webhook (running on Railway) receives checkout.session.completed,
+       generates a license key, and emails it to the customer.
+    4. The success page tells the user to check their email.
+
+  Prerequisites:
+    · A Stripe account with a one-time $19.99 product created in the dashboard.
+    · Your license server deployed to Railway (see license-server/main.py).
+    · Stripe webhook pointing to https://your-railway-url.up.railway.app/webhook
+      with the checkout.session.completed event selected.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Buy Extract — Mining Intelligence Platform</title>
+  <script src="https://js.stripe.com/v3/"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+      background: #F9FAFB;
+      color: #111827;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Buy section ── */
+    .buy-section {
+      max-width: 480px;
+      margin: 80px auto;
+      padding: 0 24px;
+      text-align: center;
+    }
+
+    .buy-eyebrow {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #B08D3C;
+      margin-bottom: 16px;
+    }
+
+    .buy-title {
+      font-size: 36px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: #0B2347;
+      margin-bottom: 12px;
+    }
+
+    .buy-subtitle {
+      font-size: 17px;
+      color: #6B7280;
+      line-height: 1.6;
+      margin-bottom: 32px;
+    }
+
+    .buy-card {
+      background: #fff;
+      border: 1px solid #E5E7EB;
+      border-radius: 16px;
+      padding: 36px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.07);
+      margin-bottom: 20px;
+    }
+
+    .buy-price {
+      font-size: 48px;
+      font-weight: 800;
+      color: #0B2347;
+      letter-spacing: -0.04em;
+      margin-bottom: 4px;
+    }
+
+    .buy-price-note {
+      font-size: 13px;
+      color: #9CA3AF;
+      margin-bottom: 24px;
+    }
+
+    .buy-features {
+      list-style: none;
+      text-align: left;
+      margin-bottom: 28px;
+    }
+
+    .buy-features li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 14px;
+      color: #374151;
+      line-height: 1.6;
+      padding: 6px 0;
+      border-bottom: 1px solid #F3F4F6;
+    }
+
+    .buy-features li:last-child { border-bottom: none; }
+
+    .buy-check {
+      color: #0B2347;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .buy-btn {
+      display: block;
+      width: 100%;
+      padding: 16px 24px;
+      font-size: 16px;
+      font-weight: 700;
+      color: #0B2347;
+      background: #B08D3C;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    .buy-btn:hover {
+      background: #C49A42;
+      transform: translateY(-1px);
+    }
+
+    .buy-btn:active { transform: translateY(0); }
+
+    .buy-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .buy-guarantee {
+      font-size: 12.5px;
+      color: #9CA3AF;
+      margin-top: 12px;
+    }
+
+    .buy-platforms {
+      font-size: 13px;
+      color: #9CA3AF;
+      margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+
+<section class="buy-section">
+  <div class="buy-eyebrow">Extract — Technical Analysis Platform</div>
+  <h1 class="buy-title">Built for mining professionals</h1>
+  <p class="buy-subtitle">
+    Ingest your project documents and get a McKinsey-style technical report in minutes.
+  </p>
+
+  <div class="buy-card">
+    <div class="buy-price">$19.99</div>
+    <div class="buy-price-note">One-time purchase · Lifetime license</div>
+
+    <ul class="buy-features">
+      <li><span class="buy-check">✓</span> Upload PDFs, Excel models, CAD files, and images</li>
+      <li><span class="buy-check">✓</span> AI-generated PEA/PFS-style technical report</li>
+      <li><span class="buy-check">✓</span> DCF model with sensitivity analysis</li>
+      <li><span class="buy-check">✓</span> Export to PDF, Markdown, or JSON</li>
+      <li><span class="buy-check">✓</span> Runs locally — your documents never leave your machine</li>
+      <li><span class="buy-check">✓</span> macOS &amp; Windows · Activate on up to 3 machines</li>
+    </ul>
+
+    <button class="buy-btn" id="checkout-btn" onclick="startCheckout()">
+      Buy Extract — $19.99
+    </button>
+    <p class="buy-guarantee">Your API key required · No subscription · No hidden fees</p>
+    <p class="buy-platforms">macOS 11+ and Windows 10+</p>
+  </div>
+</section>
+
+<script>
+  // ← REPLACE with your Stripe publishable key
+  const STRIPE_PK = "pk_live_XXXXXXXXXXXXXXXXXXXXXXXX";
+
+  // ← REPLACE with your Stripe Price ID (create a one-time $19.99 price in the Stripe dashboard)
+  const PRICE_ID = "price_XXXXXXXXXXXXXXXXXXXXXXXX";
+
+  // ← REPLACE with your domain
+  const DOMAIN = "https://yourdomain.com";
+
+  const stripe = Stripe(STRIPE_PK);
+
+  async function startCheckout() {
+    const btn = document.getElementById("checkout-btn");
+    btn.disabled = true;
+    btn.textContent = "Redirecting to Stripe…";
+
+    const { error } = await stripe.redirectToCheckout({
+      lineItems: [{ price: PRICE_ID, quantity: 1 }],
+      mode: "payment",
+      successUrl: `${DOMAIN}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl:  `${DOMAIN}/extract`,
+      // Collect billing email so the webhook can find it
+      billingAddressCollection: "auto",
+    });
+
+    if (error) {
+      btn.disabled = false;
+      btn.textContent = "Buy Extract — $19.99";
+      alert("Checkout error: " + error.message);
+    }
+  }
+</script>
+
+</body>
+</html>

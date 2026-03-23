@@ -10,7 +10,11 @@ import type {
   RunStatus,
 } from "../types";
 
-const BASE = "/api";
+// In production (Tauri bundle) there's no Vite proxy, so we hit the API
+// directly on localhost.  In development the Vite proxy forwards /api → 8000.
+const BASE = import.meta.env.PROD
+  ? "http://127.0.0.1:8000"
+  : "/api";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -130,6 +134,21 @@ export async function saveSettings(body: AppSettings): Promise<AppSettings> {
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+// ── License ───────────────────────────────────────────────────────────────────
+
+export async function activateLicense(licenseKey: string): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${BASE}/activate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ license_key: licenseKey }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail ?? "Activation failed");
+  }
+  return res.json();
 }
 
 export function exportUrl(

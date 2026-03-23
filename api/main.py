@@ -10,7 +10,7 @@ Interactive docs at: http://localhost:8000/docs
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routers import analyze, export, ingest, projects, reports, settings
+from api.routers import activate, analyze, export, ingest, projects, reports, settings
 from api.routers.settings import load_and_apply_settings
 
 # Apply saved API keys to env before anything else loads
@@ -38,6 +38,7 @@ app.include_router(analyze.router)
 app.include_router(reports.router)
 app.include_router(export.router)
 app.include_router(settings.router)
+app.include_router(activate.router)
 
 
 @app.get("/health", tags=["meta"])

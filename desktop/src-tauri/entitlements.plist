@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Allow the app to open outgoing network connections (to the local API server) -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <!-- Allow the app to act as a network server (for the embedded uvicorn) -->
+  <key>com.apple.security.network.server</key>
+  <true/>
+  <!-- Allow reading/writing user-selected files -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+  <!-- Allow access to Downloads folder for exports -->
+  <key>com.apple.security.files.downloads.read-write</key>
+  <true/>
+</dict>
+</plist>

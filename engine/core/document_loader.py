@@ -22,10 +22,15 @@ from pathlib import Path
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def load_document(file_path: Path) -> str | None:
+def load_document(file_path: Path, save_render_dir: Path | None = None) -> str | None:
     """
     Extract text content from a file.
     Returns a string on success, None if the file cannot be read.
+
+    Args:
+        file_path: Path to the source document.
+        save_render_dir: If provided, CAD renders are saved here as
+            ``{stem}_render.png`` for inclusion in reports.
     """
     suffix = file_path.suffix.lower()
 
@@ -45,7 +50,11 @@ def load_document(file_path: Path) -> str | None:
         return _extract_image(file_path)
 
     if suffix in {".dxf", ".dwg"}:
-        return _extract_cad(file_path)
+        render_path = (
+            save_render_dir / f"{file_path.stem}_render.png"
+            if save_render_dir else None
+        )
+        return _extract_cad(file_path, save_render_path=render_path)
 
     return None
 
@@ -223,7 +232,7 @@ def _describe_image_openai(image_data: str, mime_type: str, api_key: str) -> str
 # DXF / DWG — CAD files
 # ---------------------------------------------------------------------------
 
-def _extract_cad(path: Path) -> str | None:
+def _extract_cad(path: Path, save_render_path: Path | None = None) -> str | None:
     import ezdxf
 
     try:
@@ -280,15 +289,19 @@ def _extract_cad(path: Path) -> str | None:
 
     # ── Visual render + vision description ───────────────────────────────────
 
-    visual = _render_cad_visual(doc, path)
+    visual = _render_cad_visual(doc, path, save_path=save_render_path)
     if visual:
         parts.append(visual)
 
     return "\n\n".join(parts)
 
 
-def _render_cad_visual(doc: object, path: Path) -> str | None:
-    """Render DXF to a PNG and describe it with the available vision model."""
+def _render_cad_visual(doc: object, path: Path, save_path: Path | None = None) -> str | None:
+    """Render DXF to a PNG and describe it with the available vision model.
+
+    If ``save_path`` is provided the rendered PNG is written there so it can
+    be embedded in report exports.
+    """
     anthropic_key = os.getenv("ANTHROPIC_API_KEY")
     openai_key = os.getenv("OPENAI_API_KEY")
     if not anthropic_key and not openai_key:
@@ -316,8 +329,14 @@ def _render_cad_visual(doc: object, path: Path) -> str | None:
                     facecolor="white")
         plt.close(fig)
         buf.seek(0)
+        png_bytes = buf.read()
 
-        image_data = base64.standard_b64encode(buf.read()).decode("utf-8")
+        # Save the render to disk if a path was provided
+        if save_path:
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            save_path.write_bytes(png_bytes)
+
+        image_data = base64.standard_b64encode(png_bytes).decode("utf-8")
 
         if anthropic_key:
             description = _describe_image_anthropic(image_data, "image/png", anthropic_key)

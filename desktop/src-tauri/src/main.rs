@@ -1,11 +1,12 @@
-// Mining Intelligence Platform — Tauri desktop shell
+// Extract — Tauri desktop shell
 //
-// On startup:
-//   1. Locates the Python virtual environment next to the app bundle
-//   2. Spawns `uvicorn api.main:app --port 8000` from the platform root
-//   3. Opens the React UI in a native macOS window
-//
-// On window close: kills the uvicorn process cleanly.
+// Startup sequence:
+//   1. Locate the API server binary:
+//      · In a production bundle: binaries/api-server/api-server inside Resources
+//      · In dev: spawn uvicorn via the .venv Python (same as before)
+//   2. Set EXTRACT_DATA_DIR and MINING_PROJECTS_ROOT before spawning.
+//   3. Give the server ~1.2 s to bind, then open the Tauri window.
+//   4. Kill the server cleanly when the window closes.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -17,92 +18,159 @@ use std::time::Duration;
 
 use tauri::{Manager, RunEvent};
 
-// Shared state — holds the handle to the Python server process
+// ── State ────────────────────────────────────────────────────────────────────
+
 struct ApiServer(Mutex<Option<Child>>);
 
-/// Find the platform root directory.
-/// In dev:     two dirs up from the Cargo manifest = mining_intelligence_platform/
-/// In release: next to the .app bundle
-fn find_platform_root() -> PathBuf {
-    // Walk up from the executable looking for pyproject.toml as a marker
+// ── Path helpers ─────────────────────────────────────────────────────────────
+
+/// Returns the platform-appropriate app data directory.
+/// Mirrors the logic in api_server_entry.py.
+fn app_data_dir() -> PathBuf {
+    #[cfg(target_os = "macos")]
+    {
+        dirs_next::home_dir()
+            .unwrap_or_default()
+            .join("Library/Application Support/com.extract.app")
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var("APPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| dirs_next::home_dir().unwrap_or_default())
+            .join("com.extract.app")
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        dirs_next::home_dir()
+            .unwrap_or_default()
+            .join(".config/com.extract.app")
+    }
+}
+
+fn default_projects_dir() -> PathBuf {
+    dirs_next::document_dir()
+        .unwrap_or_else(|| dirs_next::home_dir().unwrap_or_default())
+        .join("Extract Projects")
+}
+
+// ── Binary discovery ─────────────────────────────────────────────────────────
+
+/// In a production bundle, Tauri copies the `binaries/api-server/` directory
+/// into the app's Resources folder.  Find the executable there.
+fn find_bundled_binary(resource_dir: &PathBuf) -> Option<PathBuf> {
+    #[cfg(windows)]
+    let exe = "api-server.exe";
+    #[cfg(not(windows))]
+    let exe = "api-server";
+
+    let candidate = resource_dir.join("binaries").join("api-server").join(exe);
+    if candidate.exists() {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+/// In dev, locate the project root (has pyproject.toml) and return
+/// (project_root, venv_python).
+fn find_dev_python() -> Option<(PathBuf, PathBuf)> {
     let mut dir = std::env::current_exe()
         .unwrap_or_default()
         .parent()
         .unwrap_or(&PathBuf::from("."))
         .to_path_buf();
 
-    for _ in 0..10 {
+    for _ in 0..14 {
         if dir.join("pyproject.toml").exists() {
-            return dir;
+            let python = dir.join(".venv/bin/python");
+            if python.exists() {
+                return Some((dir, python));
+            }
         }
         match dir.parent() {
             Some(p) => dir = p.to_path_buf(),
             None => break,
         }
     }
-
-    // Fallback: developer is running `cargo tauri dev` from desktop/src-tauri
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()   // desktop/
-        .and_then(|p| p.parent()) // mining_intelligence_platform/
-        .unwrap_or(&PathBuf::from("."))
-        .to_path_buf()
+    None
 }
 
-/// Resolve the Python executable — prefer the .venv inside the platform root.
-fn find_python(platform_root: &PathBuf) -> PathBuf {
-    let venv_python = platform_root.join(".venv/bin/python");
-    if venv_python.exists() {
-        return venv_python;
+// ── Server spawn ─────────────────────────────────────────────────────────────
+
+fn spawn_api_server(
+    resource_dir: &PathBuf,
+    data_dir: &PathBuf,
+    projects_dir: &PathBuf,
+) -> Option<Child> {
+    std::fs::create_dir_all(data_dir).ok();
+    std::fs::create_dir_all(projects_dir).ok();
+
+    // ── Production: use the bundled PyInstaller binary ──────────────────────
+    if let Some(bin) = find_bundled_binary(resource_dir) {
+        let working_dir = bin.parent().unwrap_or(resource_dir).to_path_buf();
+        println!("[Extract] Starting bundled API server: {}", bin.display());
+        return Command::new(&bin)
+            .current_dir(&working_dir)
+            .env("EXTRACT_DATA_DIR",     data_dir)
+            .env("MINING_PROJECTS_ROOT", projects_dir)
+            .env("MPLBACKEND",           "Agg")
+            .spawn()
+            .map_err(|e| eprintln!("[Extract] Failed to start API server: {e}"))
+            .ok();
     }
-    // Fallback to system python3
-    PathBuf::from("python3")
-}
 
-fn spawn_api_server(platform_root: &PathBuf) -> Option<Child> {
-    let python = find_python(platform_root);
-
-    // Use python -m uvicorn so we don't need uvicorn on PATH
-    let child = Command::new(&python)
-        .args(["-m", "uvicorn", "api.main:app", "--host", "127.0.0.1", "--port", "8000"])
-        .current_dir(platform_root)
-        .spawn();
-
-    match child {
-        Ok(c) => {
-            println!("[MIP] API server started (pid {})", c.id());
-            Some(c)
-        }
-        Err(e) => {
-            eprintln!("[MIP] Failed to start API server: {e}");
-            None
-        }
+    // ── Development: spawn uvicorn via .venv ────────────────────────────────
+    if let Some((root, python)) = find_dev_python() {
+        println!("[Extract] Dev mode — spawning uvicorn from {}", root.display());
+        return Command::new(&python)
+            .args(["-m", "uvicorn", "api.main:app",
+                   "--host", "127.0.0.1", "--port", "8000"])
+            .current_dir(&root)
+            .env("EXTRACT_DATA_DIR",     data_dir)
+            .env("MINING_PROJECTS_ROOT", projects_dir)
+            .env("MPLBACKEND",           "Agg")
+            .spawn()
+            .map_err(|e| eprintln!("[Extract] Failed to start dev server: {e}"))
+            .ok();
     }
+
+    eprintln!("[Extract] Could not locate API server — running without backend.");
+    None
 }
+
+// ── Main ─────────────────────────────────────────────────────────────────────
 
 fn main() {
-    let platform_root = find_platform_root();
-    println!("[MIP] Platform root: {}", platform_root.display());
-
-    // Start the API server before the Tauri window opens
-    let server_child = spawn_api_server(&platform_root);
-
-    // Give uvicorn a moment to bind to the port
-    thread::sleep(Duration::from_millis(800));
+    let data_dir     = app_data_dir();
+    let projects_dir = default_projects_dir();
 
     tauri::Builder::default()
-        .manage(ApiServer(Mutex::new(server_child)))
+        .setup(move |app| {
+            let resource_dir = app
+                .path_resolver()
+                .resource_dir()
+                .unwrap_or_else(|| PathBuf::from("."));
+
+            let child = spawn_api_server(&resource_dir, &data_dir, &projects_dir);
+
+            // Give the server time to bind before the webview tries to connect
+            thread::sleep(Duration::from_millis(1200));
+
+            app.manage(ApiServer(Mutex::new(child)));
+            Ok(())
+        })
         .build(tauri::generate_context!())
         .expect("Failed to build Tauri application")
         .run(|app_handle, event| {
             if let RunEvent::ExitRequested { .. } | RunEvent::Exit = event {
-                // Shut down the Python server when the app closes
                 let state = app_handle.state::<ApiServer>();
-                let child_opt = state.0.lock().ok().and_then(|mut g| g.take());
-                if let Some(mut child) = child_opt {
-                    println!("[MIP] Shutting down API server…");
-                    let _ = child.kill();
-                    let _ = child.wait();
+                if let Ok(mut guard) = state.0.lock() {
+                    if let Some(mut child) = guard.take() {
+                        println!("[Extract] Shutting down API server…");
+                        let _ = child.kill();
+                        let _ = child.wait();
+                    }
                 }
             }
         });

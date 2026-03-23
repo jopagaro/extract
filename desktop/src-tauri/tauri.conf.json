@@ -15,7 +15,7 @@
       "window": { "all": true },
       "fs": {
         "all": true,
-        "scope": ["$HOME/**", "$DOWNLOAD/**", "$DESKTOP/**", "$DOCUMENT/**"]
+        "scope": ["$HOME/**", "$DOWNLOAD/**", "$DESKTOP/**", "$DOCUMENT/**", "$APPDATA/**"]
       },
       "dialog": { "all": true },
       "path": { "all": true }
@@ -24,19 +24,34 @@
       "active": true,
       "targets": "all",
       "identifier": "com.extract.app",
-      "icon": [],
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ],
+      "resources": [
+        "binaries/api-server/**/*"
+      ],
       "macOS": {
-        "minimumSystemVersion": "11.0"
+        "minimumSystemVersion": "11.0",
+        "entitlements": "entitlements.plist"
+      },
+      "windows": {
+        "wix": {
+          "language": "en-US"
+        }
       }
     },
     "security": {
-      "csp": "default-src 'self' http://localhost:8000 blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:"
+      "csp": "default-src 'self' http://127.0.0.1:8000 blob:; connect-src 'self' http://127.0.0.1:8000; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://127.0.0.1:8000"
     },
     "windows": [
       {
         "title": "Extract",
-        "width": 1400,
-        "height": 900,
+        "width": 1440,
+        "height": 920,
         "minWidth": 1000,
         "minHeight": 650,
         "resizable": true,

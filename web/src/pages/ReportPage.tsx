@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getReport } from "../api/client";
+
+// Same base URL logic as client.ts — no Vite proxy in the Tauri bundle
+const API_BASE = import.meta.env.PROD ? "http://127.0.0.1:8000" : "/api";
 import { useToast } from "../components/shared/Toast";
 import type { ReportContent } from "../types";
 
@@ -11,7 +14,7 @@ async function downloadReport(
   runId: string,
   format: "json" | "md" | "txt" | "pdf"
 ) {
-  const url = `/api/projects/${projectId}/reports/${runId}/export?format=${format}`;
+  const url = `${API_BASE}/projects/${projectId}/reports/${runId}/export?format=${format}`;
   const res = await fetch(url);
   if (!res.ok) {
     alert("Export failed — check that the server is running.");
@@ -284,14 +287,53 @@ function DcfSection({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-function DataSourcesSection({ data }: { data: Record<string, unknown> }) {
+function ImageGallery({
+  projectId,
+  imageFiles,
+  renderFiles,
+}: {
+  projectId: string;
+  imageFiles: string[];
+  renderFiles: string[];
+}) {
+  const all = [...new Set([...imageFiles, ...renderFiles])];
+  if (!all.length) return null;
+
+  return (
+    <div className="report-image-gallery">
+      <div className="report-sub-label">Visual References</div>
+      {all.map((name) => (
+        <figure key={name} className="report-image-figure">
+          <img
+            src={`${API_BASE}/projects/${projectId}/files/${encodeURIComponent(name)}/content`}
+            alt={name}
+            className="report-image"
+            loading="lazy"
+          />
+          <figcaption className="report-image-caption">{name}</figcaption>
+        </figure>
+      ))}
+    </div>
+  );
+}
+
+function DataSourcesSection({
+  projectId,
+  data,
+}: {
+  projectId: string;
+  data: Record<string, unknown>;
+}) {
   const files = (data.source_files as string[]) ?? [];
+  const imageFiles = (data.image_files as string[]) ?? [];
+  const renderFiles = (data.render_files as string[]) ?? [];
+
   return (
     <div className="report-specialist-body">
       <div className="report-notice">{String(data.notice ?? "")}</div>
       {files.length > 0 && (
         <>
-          <div className="report-sub-label" style={{ marginTop: 16 }}>
+          <div className="report-sub-label">
             Source Documents ({files.length})
           </div>
           <div className="report-file-list">
@@ -304,8 +346,9 @@ function DataSourcesSection({ data }: { data: Record<string, unknown> }) {
           </div>
         </>
       )}
+      <ImageGallery projectId={projectId} imageFiles={imageFiles} renderFiles={renderFiles} />
       {data.generated_at != null && (
-        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 14 }}>
+        <div style={{ fontSize: 12, color: "var(--r-ink-4)", marginTop: 20 }}>
           Generated: {new Date(String(data.generated_at)).toLocaleString()}
         </div>
       )}
@@ -447,7 +490,7 @@ export default function ReportPage() {
   const renderSection = (key: string) => {
     const content = sections[key];
     if (key === "00_data_sources") {
-      return <DataSourcesSection data={content as Record<string, unknown>} />;
+      return <DataSourcesSection projectId={id} data={content as Record<string, unknown>} />;
     }
     if (key === "06_dcf_model") {
       return <DcfSection data={content as Record<string, unknown>} />;
@@ -552,14 +595,12 @@ export default function ReportPage() {
               <div className="report-section-header">
                 <div className="report-section-heading">
                   {cfg?.number && (
-                    <span className="report-section-number">{cfg.number}</span>
+                    <div className="report-section-number">Section {cfg.number}</div>
                   )}
-                  <div>
-                    <div className="report-section-title">{cfg?.title ?? key}</div>
-                    {cfg?.subtitle && (
-                      <div className="report-section-subtitle">{cfg.subtitle}</div>
-                    )}
-                  </div>
+                  <div className="report-section-title">{cfg?.title ?? key}</div>
+                  {cfg?.subtitle && (
+                    <div className="report-section-subtitle">{cfg.subtitle}</div>
+                  )}
                 </div>
               </div>
               {renderSection(key)}
@@ -581,10 +622,12 @@ export default function ReportPage() {
               className="report-section report-section--appendix"
             >
               <div className="report-section-header">
-                <div className="report-section-title">{cfg?.title ?? key}</div>
-                {cfg?.subtitle && (
-                  <div className="report-section-subtitle">{cfg.subtitle}</div>
-                )}
+                <div className="report-section-heading">
+                  <div className="report-section-title">{cfg?.title ?? key}</div>
+                  {cfg?.subtitle && (
+                    <div className="report-section-subtitle">{cfg.subtitle}</div>
+                  )}
+                </div>
               </div>
               {renderSection(key)}
             </div>
