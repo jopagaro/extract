@@ -45,7 +45,12 @@
       }
     },
     "updater": {
-      "active": false
+      "active": true,
+      "dialog": true,
+      "endpoints": [
+        "https://github.com/jopagaro/extract/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJEREEzMjJFODdGQTk5NTQKUldSVW1mcUhMakxhdlNpM3JTbE9CWmU2UDZCU3JpV0xRd1pIVUhTeHltSXZaWktpRHozV25nZG0K"
     },
     "security": {
       "csp": "default-src 'self' http://127.0.0.1:8000 blob:; connect-src 'self' http://127.0.0.1:8000; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://127.0.0.1:8000"
