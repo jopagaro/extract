@@ -17,7 +17,7 @@ jobs:
           - platform: macos-latest
             target: aarch64-apple-darwin
             suffix: aarch64.dmg
-          - platform: macos-13
+          - platform: macos-latest
             target: x86_64-apple-darwin
             suffix: x64.dmg
           - platform: windows-latest
