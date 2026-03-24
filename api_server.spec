@@ -143,8 +143,6 @@ a = Analysis(
     runtime_hooks=[],
     excludes=[
         "tkinter",
-        "test",
-        "unittest",
         "pytest",
     ],
     win_no_prefer_redirects=False,
