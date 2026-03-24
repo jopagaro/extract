@@ -47,18 +47,18 @@ def _get_all_sections(project_id: str, run_id: str) -> dict[str, object]:
 
 
 SECTION_TITLES = {
-    "07_assembly":           "Analyst Narrative",
+    "07_assembly":            "Analyst Narrative",
     "02_market_intelligence": "Market Intelligence",
-    "01_project_facts":      "Project Facts",
-    "03_geology":            "Geology & Resources",
-    "04_economics":          "Economics & Financial Analysis",
-    "05_risks":              "Risks & Uncertainties",
-    "06_dcf_model":          "DCF Financial Model",
-    "00_data_sources":       "Appendix A — Source Documents",
-    "project_facts":        "Project Facts",
-    "geology_summary":      "Geology",
-    "economics_summary":    "Economics",
-    "risk_summary":         "Risks",
+    "01_project_facts":       "Project Facts",
+    "03_geology":             "Geology & Resources",
+    "04_economics":           "Economics & Financial Analysis",
+    "05_risks":               "Risks & Uncertainties",
+    "06_dcf_model":           "DCF Financial Model",
+    "00_data_sources":        "Appendix A — Source Documents",
+    "project_facts":          "Project Facts",
+    "geology_summary":        "Geology",
+    "economics_summary":      "Economics",
+    "risk_summary":           "Risks",
 }
 
 
@@ -161,222 +161,162 @@ def _safe(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# PDF design system
+# Design tokens  — Substack-style: off-white, dark ink, one accent bar
 # ---------------------------------------------------------------------------
 
-# Palette
-_INK       = (15, 20, 30)       # near-black for body text
-_NAVY      = (11, 35, 71)       # headings / accents
-_GOLD      = (176, 141, 60)     # primary accent
-_SILVER    = (140, 148, 160)    # secondary / captions
-_RULE      = (220, 224, 230)    # light dividers
-_BG_LIGHT  = (248, 248, 250)    # alternating row / card bg
-_BG_DARK   = (22, 32, 52)       # cover dark band
-_WHITE     = (255, 255, 255)
-_AMBER     = (180, 120, 20)     # warning/flag text
-_AMBER_BG  = (255, 248, 230)    # warning card bg
+_BG         = (247, 244, 238)   # warm off-white page background
+_INK        = (26, 23, 19)      # near-black body text
+_INK_SOFT   = (80, 75, 68)      # secondary text / captions
+_GRAY       = (150, 144, 136)   # labels, metadata, rules
+_RULE_CLR   = (210, 206, 198)   # horizontal dividers
+_ACCENT     = (44, 74, 62)      # dark muted green — top bar only
+_WHITE      = (255, 255, 255)
 
 # Layout
-_LM = 18   # left margin
-_RM = 18   # right margin
-_PW = 210 - _LM - _RM   # usable page width (A4)
+_LM  = 22   # left margin
+_RM  = 22   # right margin
+_PW  = 210 - _LM - _RM   # usable width on A4
 
 
-def _set_body(pdf, size: float = 10.0, style: str = "") -> None:
-    pdf.set_font("Helvetica", style, size)
+# ---------------------------------------------------------------------------
+# Low-level helpers
+# ---------------------------------------------------------------------------
+
+def _bg(pdf) -> None:
+    """Fill the current page with the off-white background."""
+    pdf.set_fill_color(*_BG)
+    pdf.rect(0, 0, 210, 297, "F")
+
+
+def _accent_bar(pdf) -> None:
+    """Thin colored stripe across the very top of the page."""
+    pdf.set_fill_color(*_ACCENT)
+    pdf.rect(0, 0, 210, 4, "F")
+
+
+def _rule(pdf, y: float | None = None) -> None:
+    lw_prev = pdf.line_width
+    pdf.set_draw_color(*_RULE_CLR)
+    pdf.set_line_width(0.25)
+    y = y if y is not None else pdf.get_y()
+    pdf.line(_LM, y, _LM + _PW, y)
+    pdf.set_line_width(lw_prev)
+
+
+def _label(pdf, text: str) -> None:
+    """Small all-caps gray label — used above section titles."""
+    pdf.set_font("Helvetica", "B", 7.5)
+    pdf.set_text_color(*_GRAY)
+    pdf.cell(0, 5, _safe(text.upper()), ln=True)
+
+
+def _h1(pdf, text: str) -> None:
+    pdf.set_font("Helvetica", "B", 20)
     pdf.set_text_color(*_INK)
+    pdf.multi_cell(_PW, 9, _safe(text))
+    pdf.ln(1)
 
 
-def _set_label(pdf, size: float = 7.5) -> None:
-    pdf.set_font("Helvetica", "B", size)
-    pdf.set_text_color(*_SILVER)
+def _h2(pdf, text: str) -> None:
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.set_text_color(*_INK)
+    pdf.multi_cell(_PW, 7, _safe(text))
+    pdf.ln(2)
 
 
-def _set_heading(pdf, size: float = 13.0) -> None:
-    pdf.set_font("Helvetica", "B", size)
-    pdf.set_text_color(*_NAVY)
+def _body(pdf, text: str, size: float = 10.5) -> None:
+    pdf.set_font("Helvetica", "", size)
+    pdf.set_text_color(*_INK)
+    pdf.multi_cell(_PW, 6.2, _safe(text))
 
 
-def _rule(pdf, color=_RULE, lw: float = 0.25) -> None:
-    pdf.set_draw_color(*color)
-    pdf.set_line_width(lw)
-    pdf.line(_LM, pdf.get_y(), _LM + _PW, pdf.get_y())
-
-
-def _prose(pdf, text: str, line_h: float = 5.8, size: float = 10.0) -> None:
-    """Render flowing prose, split on double newlines."""
-    _set_body(pdf, size)
+def _prose(pdf, text: str, size: float = 10.5) -> None:
+    """Render multi-paragraph prose split on blank lines."""
+    pdf.set_font("Helvetica", "", size)
+    pdf.set_text_color(*_INK)
     for para in [p.strip() for p in text.split("\n\n") if p.strip()]:
-        para = _safe(" ".join(para.split()))
-        pdf.multi_cell(_PW, line_h, para)
-        pdf.ln(3.5)
+        pdf.multi_cell(_PW, 6.2, _safe(" ".join(para.split())))
+        pdf.ln(4)
 
 
-def _section_header(pdf, title: str, subtitle: str | None = None, num: str | None = None) -> None:
-    """Elegant section header with gold left accent bar."""
-    # Gold left bar
-    pdf.set_fill_color(*_GOLD)
-    pdf.rect(_LM, pdf.get_y(), 2.5, 14 if not subtitle else 18, "F")
+def _caption(pdf, text: str) -> None:
+    pdf.set_font("Helvetica", "I", 8.5)
+    pdf.set_text_color(*_GRAY)
+    pdf.multi_cell(_PW, 5, _safe(text))
 
-    x_text = _LM + 7
-    y0 = pdf.get_y()
 
+def _section_break(pdf, title: str, subtitle: str | None = None, num: str | None = None) -> None:
+    """Clean section opener: optional number label, bold title, optional subtitle, rule."""
+    pdf.ln(2)
     if num:
-        pdf.set_xy(x_text, y0 + 0.5)
-        _set_label(pdf, 7)
-        pdf.cell(0, 4, _safe(f"SECTION {num}"), ln=True)
-        y0 = pdf.get_y()
-
-    pdf.set_xy(x_text, y0)
-    _set_heading(pdf, 14)
-    pdf.cell(0, 7, _safe(title), ln=True)
-
+        _label(pdf, f"Section {num}")
+        pdf.ln(1)
+    _h2(pdf, title)
     if subtitle:
-        pdf.set_x(x_text)
-        _set_body(pdf, 8.5)
-        pdf.set_text_color(*_SILVER)
-        pdf.cell(0, 5, _safe(subtitle), ln=True)
-
-    pdf.ln(7)
-
-
-def _metric_cards(pdf, items: list[tuple[str, str, str | None]], cols: int = 4) -> None:
-    """Render a row of KPI cards with value + label + optional context."""
-    if not items:
-        return
-    col_w = _PW / cols
-    card_h = 18
-    y0 = pdf.get_y()
-
-    for i, (value, label, context) in enumerate(items[:cols * 2]):
-        col = i % cols
-        row = i // cols
-        x = _LM + col * col_w
-        y = y0 + row * (card_h + 3)
-
-        # Card background
-        pdf.set_fill_color(*_BG_LIGHT)
-        pdf.rect(x, y, col_w - 2, card_h, "F")
-
-        # Gold top accent line
-        pdf.set_fill_color(*_GOLD)
-        pdf.rect(x, y, col_w - 2, 1.5, "F")
-
-        # Value
-        pdf.set_xy(x + 4, y + 3.5)
-        pdf.set_font("Helvetica", "B", 13)
-        pdf.set_text_color(*_NAVY)
-        pdf.cell(col_w - 8, 6, _safe(str(value)), ln=False)
-
-        # Label
-        pdf.set_xy(x + 4, y + 10)
-        _set_label(pdf, 7.5)
-        pdf.cell(col_w - 8, 4, _safe(str(label)), ln=False)
-
-    rows = (len(items[:cols * 2]) + cols - 1) // cols
-    pdf.set_y(y0 + rows * (card_h + 3) + 5)
+        _caption(pdf, subtitle)
+        pdf.ln(1)
     _rule(pdf)
     pdf.ln(6)
 
 
-def _price_tiles(pdf, prices: list[tuple[str, str, str]]) -> None:
-    """Compact price tiles: value + unit on top, name below."""
-    if not prices:
-        return
-    cols = min(4, len(prices))
-    tile_w = _PW / cols
-    tile_h = 16
-    y0 = pdf.get_y()
+# ---------------------------------------------------------------------------
+# Data renderers
+# ---------------------------------------------------------------------------
 
-    for i, (name, value, unit) in enumerate(prices[:8]):
-        col = i % cols
-        row = i // cols
-        x = _LM + col * tile_w
-        y = y0 + row * (tile_h + 2)
-
-        pdf.set_fill_color(*_BG_LIGHT)
-        pdf.rect(x, y, tile_w - 1.5, tile_h, "F")
-
-        pdf.set_xy(x + 3, y + 2.5)
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.set_text_color(*_GOLD)
-        display = f"{value} {unit}".strip()
-        pdf.cell(tile_w - 6, 5.5, _safe(display), ln=False)
-
-        pdf.set_xy(x + 3, y + 9)
-        _set_label(pdf, 7)
-        pdf.cell(tile_w - 6, 4, _safe(name.replace("_", " ").title()), ln=False)
-
-    rows = (len(prices[:8]) + cols - 1) // cols
-    pdf.set_y(y0 + rows * (tile_h + 2) + 6)
+def _kv_list(pdf, items: list[tuple[str, str]]) -> None:
+    """Render a clean label: value list, no backgrounds."""
+    for label, value in items:
+        if not value or str(value).strip() in ("", "None", "null"):
+            continue
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(*_INK_SOFT)
+        pdf.write(6, _safe(label + ":  "))
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(*_INK)
+        pdf.write(6, _safe(str(value)))
+        pdf.ln(6)
 
 
-def _table(pdf, headers: list[str], rows: list[list[str]], col_widths: list[float] | None = None) -> None:
-    """Render a clean table with header row and alternating body rows."""
+def _simple_table(pdf, headers: list[str], rows: list[list[str]], col_widths: list[float] | None = None) -> None:
+    """Minimal table: thin gray borders, no background fills."""
     if not rows:
         return
     if col_widths is None:
         col_widths = [_PW / len(headers)] * len(headers)
-
     row_h = 6.5
 
-    # Header
-    pdf.set_fill_color(*_NAVY)
-    pdf.set_text_color(*_WHITE)
+    # Header row
     pdf.set_font("Helvetica", "B", 8.5)
+    pdf.set_text_color(*_INK_SOFT)
+    pdf.set_draw_color(*_RULE_CLR)
+    pdf.set_line_width(0.25)
     x0 = _LM
     for i, h in enumerate(headers):
         pdf.set_xy(x0, pdf.get_y())
-        pdf.cell(col_widths[i], row_h, _safe(h), fill=True, border=0)
+        pdf.cell(col_widths[i], row_h, _safe(h), border="B")
         x0 += col_widths[i]
     pdf.ln(row_h)
 
-    # Body rows
-    for r_idx, row in enumerate(rows):
-        if pdf.get_y() > 260:
+    # Body
+    pdf.set_font("Helvetica", "", 8.5)
+    pdf.set_text_color(*_INK)
+    for row in rows:
+        if pdf.get_y() > 265:
             pdf.add_page()
-        fill = r_idx % 2 == 0
-        pdf.set_fill_color(*_BG_LIGHT)
-        pdf.set_text_color(*_INK)
-        pdf.set_font("Helvetica", "", 8.5)
         x0 = _LM
         for i, cell in enumerate(row):
             pdf.set_xy(x0, pdf.get_y())
-            pdf.cell(col_widths[i], row_h, _safe(str(cell)), fill=fill, border=0)
+            pdf.cell(col_widths[i], row_h, _safe(str(cell)), border=0)
             x0 += col_widths[i]
         pdf.ln(row_h)
-
-    pdf.ln(5)
-
-
-def _flag_box(pdf, flags: list[str]) -> None:
-    """Amber warning box for consistency flags."""
-    if not flags:
-        return
-    pdf.set_fill_color(*_AMBER_BG)
-    pdf.set_draw_color(*_GOLD)
-    pdf.set_line_width(0.4)
-
-    y0 = pdf.get_y()
-    box_h = 7 + len(flags) * 5.5 + 4
-    pdf.rect(_LM, y0, _PW, box_h, "FD")
-
-    pdf.set_xy(_LM + 4, y0 + 3)
-    pdf.set_font("Helvetica", "B", 8)
-    pdf.set_text_color(*_AMBER)
-    pdf.cell(0, 4.5, "CONSISTENCY NOTES", ln=True)
-
-    for flag in flags:
-        pdf.set_x(_LM + 4)
-        pdf.set_font("Helvetica", "", 9)
-        pdf.set_text_color(*_AMBER)
-        pdf.cell(0, 5.5, _safe(f"  -  {flag}"), ln=True)
+        # thin rule between rows
+        _rule(pdf)
 
     pdf.ln(6)
 
 
 # ---------------------------------------------------------------------------
-# Section display order
+# Section order
 # ---------------------------------------------------------------------------
 
 _PDF_SECTION_ORDER = [
@@ -391,14 +331,14 @@ _PDF_SECTION_ORDER = [
 ]
 
 _PDF_SECTION_META: dict[str, dict] = {
-    "07_assembly":            {"title": "Analyst Narrative",               "subtitle": None,                                             "num": None},
-    "02_market_intelligence": {"title": "Market Intelligence",             "subtitle": "Live prices and web-sourced context",            "num": None},
-    "03_geology":             {"title": "Geology & Resources",             "subtitle": "Deposit geology and resource assessment",        "num": "1"},
-    "04_economics":           {"title": "Economics & Financial Analysis",  "subtitle": "Capital costs, operating costs, projections",    "num": "2"},
-    "05_risks":               {"title": "Risks & Uncertainties",           "subtitle": "Material risks and mitigations",                 "num": "3"},
-    "06_dcf_model":           {"title": "DCF Financial Model",             "subtitle": "Discounted cash flow analysis",                  "num": "4"},
-    "00_data_sources":        {"title": "Appendix A — Source Documents",   "subtitle": "All documents used in this analysis",            "num": None},
-    "01_project_facts":       {"title": "Project Facts",                   "subtitle": None,                                             "num": None},
+    "07_assembly":            {"title": "Analyst Narrative",               "subtitle": None,                                          "num": None},
+    "02_market_intelligence": {"title": "Market Intelligence",             "subtitle": "Live prices and current market context",      "num": None},
+    "03_geology":             {"title": "Geology & Resources",             "subtitle": "Deposit geology and resource assessment",     "num": "1"},
+    "04_economics":           {"title": "Economics & Financial Analysis",  "subtitle": "Capital costs, operating costs, projections", "num": "2"},
+    "05_risks":               {"title": "Risks & Uncertainties",           "subtitle": "Material risks and mitigations",              "num": "3"},
+    "06_dcf_model":           {"title": "DCF Financial Model",             "subtitle": "Discounted cash flow analysis",               "num": "4"},
+    "00_data_sources":        {"title": "Appendix A — Source Documents",   "subtitle": None,                                          "num": None},
+    "01_project_facts":       {"title": "Project Facts",                   "subtitle": None,                                          "num": None},
 }
 
 
@@ -415,116 +355,74 @@ def _generate_pdf(project_id: str, run_id: str, sections: dict) -> bytes:
 
     class ReportPDF(FPDF):
         def header(self):
+            _bg(self)
+            _accent_bar(self)
             if self.page_no() == 1:
                 return
-            # Running header
-            self.set_font("Helvetica", "", 7.5)
-            self.set_text_color(*_SILVER)
+            # Subtle running header
             self.set_y(10)
-            proj_display = _safe(project_id.replace("_", " ").replace("-", " ").title())
-            self.cell(0, 5, proj_display, align="L")
+            self.set_font("Helvetica", "", 8)
+            self.set_text_color(*_GRAY)
+            proj = _safe(project_id.replace("_", " ").replace("-", " ").title())
+            self.cell(0, 5, proj, align="L")
             self.set_y(10)
-            self.cell(0, 5, "Extract  —  Confidential", align="R")
-            self.set_y(16)
-            _rule(self, _RULE, 0.2)
-            self.ln(4)
+            self.cell(0, 5, "Extract", align="R")
+            self.set_y(17)
+            _rule(self)
+            self.ln(5)
 
         def footer(self):
-            self.set_y(-13)
-            _rule(self, _RULE, 0.2)
-            self.ln(1)
-            self.set_font("Helvetica", "", 7.5)
-            self.set_text_color(*_SILVER)
-            self.cell(0, 5, "For internal research purposes only. Not investment advice.", align="L")
-            self.set_y(-13)
-            self.set_font("Helvetica", "", 7.5)
-            self.cell(0, 5, f"{self.page_no() - 1}", align="R")
+            self.set_y(-14)
+            self.set_font("Helvetica", "", 8)
+            self.set_text_color(*_GRAY)
+            self.cell(0, 6, "For internal research purposes only. Not investment advice.", align="L")
+            self.set_y(-14)
+            self.cell(0, 6, f"{self.page_no() - 1}", align="R")
 
     pdf = ReportPDF()
     pdf.set_auto_page_break(auto=True, margin=20)
-    pdf.set_margins(_LM, 16, _RM)
+    pdf.set_margins(_LM, 18, _RM)
 
-    # ── Cover page ──────────────────────────────────────────────────────────
+    # ── Cover ────────────────────────────────────────────────────────────────
     pdf.add_page()
 
-    # Full-width dark header band
-    pdf.set_fill_color(*_BG_DARK)
-    pdf.rect(0, 0, 210, 72, "F")
+    pdf.set_y(22)
 
-    # Gold accent stripe at top
-    pdf.set_fill_color(*_GOLD)
-    pdf.rect(0, 0, 210, 3, "F")
+    # Publication label
+    _label(pdf, "Extract  —  Technical Analysis Report")
+    pdf.ln(5)
 
-    # "EXTRACT" wordmark
-    pdf.set_xy(_LM, 12)
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.set_text_color(*_GOLD)
-    pdf.cell(0, 5, "EXTRACT", ln=True)
+    # Project title
+    proj_display = project_id.replace("_", " ").replace("-", " ").title()
+    _h1(pdf, proj_display)
+    pdf.ln(3)
 
-    # Report type label
-    pdf.set_x(_LM)
-    pdf.set_font("Helvetica", "", 8)
-    pdf.set_text_color(160, 170, 185)
-    pdf.cell(0, 5, "TECHNICAL ANALYSIS REPORT", ln=True)
-
-    # Project name — large
-    pdf.set_xy(_LM, 32)
-    proj_display = _safe(project_id.replace("_", " ").replace("-", " ").title())
-    pdf.set_font("Helvetica", "B", 28)
-    pdf.set_text_color(*_WHITE)
-    pdf.multi_cell(_PW, 11, proj_display)
-
-    # Study level sub-label
+    # Study level / stage
     assembly = sections.get("07_assembly", {})
     stage = ""
     if isinstance(assembly, dict):
         stage = assembly.get("project_stage") or assembly.get("study_level") or ""
     if stage and stage.lower() not in ("unknown", "not specified", ""):
-        pdf.set_x(_LM)
-        pdf.set_font("Helvetica", "", 11)
-        pdf.set_text_color(160, 170, 185)
-        pdf.cell(0, 6, _safe(str(stage)), ln=True)
+        pdf.set_font("Helvetica", "", 12)
+        pdf.set_text_color(*_INK_SOFT)
+        pdf.cell(0, 7, _safe(str(stage)), ln=True)
+        pdf.ln(2)
 
-    # Move below the dark band
-    pdf.set_y(82)
-    pdf.set_text_color(*_INK)
+    _rule(pdf)
+    pdf.ln(6)
 
-    # Meta grid (2 columns × 2 rows)
-    meta = [
-        ("REPORT DATE",    datetime.now(timezone.utc).strftime("%B %d, %Y")),
-        ("CLASSIFICATION", "Internal — Confidential"),
-        ("RUN ID",         run_id),
-        ("PREPARED BY",    "Extract AI"),
-    ]
-    col_w = _PW / 2
-    for i in range(0, len(meta), 2):
-        y_row = pdf.get_y()
-        for j in range(2):
-            if i + j >= len(meta):
-                break
-            lbl, val = meta[i + j]
-            x = _LM + j * col_w
-            pdf.set_xy(x, y_row)
-            _set_label(pdf, 7)
-            pdf.cell(col_w, 4.5, lbl, ln=False)
-            pdf.set_xy(x, y_row + 4.5)
-            pdf.set_font("Helvetica", "B", 10)
-            pdf.set_text_color(*_INK)
-            pdf.multi_cell(col_w - 4, 5.5, _safe(val))
-        pdf.set_y(max(pdf.get_y(), y_row + 13))
-
+    # Meta line
+    date_str = datetime.now(timezone.utc).strftime("%B %d, %Y")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(*_GRAY)
+    pdf.cell(0, 5, _safe(f"{date_str}  —  Run {run_id}  —  Internal / Confidential"), ln=True)
     pdf.ln(10)
-    _rule(pdf, _RULE)
-    pdf.ln(8)
 
     # Disclaimer
-    pdf.set_font("Helvetica", "I", 8.5)
-    pdf.set_text_color(*_SILVER)
-    pdf.multi_cell(
-        _PW, 5,
+    _caption(pdf,
         "This report is generated by an AI system for internal research purposes only. "
         "It does not constitute investment advice or a formal technical study. "
-        "All figures and conclusions should be verified against primary source documents.",
+        "All figures and conclusions should be verified against primary source documents."
     )
 
     # ── Content pages ────────────────────────────────────────────────────────
@@ -533,156 +431,161 @@ def _generate_pdf(project_id: str, run_id: str, sections: dict) -> bytes:
     for section_key in ordered_keys:
         if section_key not in sections:
             continue
-        content = sections[section_key]
-        meta_s  = _PDF_SECTION_META.get(section_key, {})
+        content  = sections[section_key]
+        meta_s   = _PDF_SECTION_META.get(section_key, {})
         title    = meta_s.get("title") or SECTION_TITLES.get(section_key, section_key.replace("_", " ").title())
         subtitle = meta_s.get("subtitle")
         num      = meta_s.get("num")
 
         pdf.add_page()
-        _section_header(pdf, title, subtitle, num)
+        _section_break(pdf, title, subtitle, num)
 
-        # ── Assembly / Narrative ──────────────────────────────────────────
+        # ── Analyst Narrative ─────────────────────────────────────────────
         if section_key == "07_assembly" and isinstance(content, dict):
-            # Key callouts
+            # Key callouts — plain inline list, no boxes
             callouts = content.get("key_callouts")
             if isinstance(callouts, list) and callouts:
-                items = [(c.get("value", ""), c.get("label", ""), c.get("context")) for c in callouts]
-                _metric_cards(pdf, items, cols=min(4, len(items)))
+                _label(pdf, "Key metrics")
+                pdf.ln(2)
+                for c in callouts:
+                    v = _safe(str(c.get("value", "")))
+                    l = _safe(str(c.get("label", "")))
+                    ctx = c.get("context", "")
+                    pdf.set_font("Helvetica", "B", 10.5)
+                    pdf.set_text_color(*_INK)
+                    pdf.write(6.5, v + "  ")
+                    pdf.set_font("Helvetica", "", 10)
+                    pdf.set_text_color(*_INK_SOFT)
+                    pdf.write(6.5, l + ("  —  " + _safe(str(ctx)) if ctx else ""))
+                    pdf.ln(7)
+                pdf.ln(4)
+                _rule(pdf)
+                pdf.ln(6)
 
             # Narrative prose
             narrative = content.get("narrative")
             if isinstance(narrative, str):
                 _prose(pdf, narrative)
 
-            # Analyst conclusion — indented block
+            # Analyst conclusion
             conclusion = content.get("analyst_conclusion")
             if isinstance(conclusion, str):
-                pdf.ln(3)
-                pdf.set_fill_color(*_BG_LIGHT)
-                pdf.set_draw_color(*_NAVY)
-                pdf.set_line_width(0.4)
-                y0 = pdf.get_y()
-                # draw left accent
-                pdf.set_fill_color(*_NAVY)
-                pdf.rect(_LM, y0, 2, 30, "F")
-                pdf.set_xy(_LM + 6, y0 + 3)
-                _set_label(pdf, 7.5)
-                pdf.cell(0, 4, "ANALYST CONCLUSION", ln=True)
-                pdf.set_x(_LM + 6)
-                pdf.set_font("Helvetica", "I", 10)
-                pdf.set_text_color(*_INK)
-                pdf.multi_cell(_PW - 6, 5.5, _safe(conclusion))
+                pdf.ln(4)
+                _rule(pdf)
                 pdf.ln(5)
+                _label(pdf, "Analyst conclusion")
+                pdf.ln(2)
+                pdf.set_font("Helvetica", "I", 10.5)
+                pdf.set_text_color(*_INK)
+                pdf.multi_cell(_PW, 6.2, _safe(conclusion))
+                pdf.ln(2)
 
-            # Consistency flags
+            # Consistency flags — plain text, no box
             flags = content.get("consistency_flags")
             if isinstance(flags, list) and flags:
-                _flag_box(pdf, [str(f) for f in flags])
+                pdf.ln(4)
+                _rule(pdf)
+                pdf.ln(5)
+                _label(pdf, "Consistency notes")
+                pdf.ln(2)
+                for flag in flags:
+                    pdf.set_font("Helvetica", "", 9.5)
+                    pdf.set_text_color(*_INK_SOFT)
+                    pdf.multi_cell(_PW, 5.8, _safe(f"- {flag}"))
+                    pdf.ln(1)
 
         # ── Market Intelligence ───────────────────────────────────────────
         elif section_key == "02_market_intelligence" and isinstance(content, dict):
             if content.get("error"):
-                _set_body(pdf, 10, "I")
-                pdf.set_text_color(*_SILVER)
-                pdf.multi_cell(_PW, 5.5, _safe(str(content["error"])))
+                _caption(pdf, str(content["error"]))
             else:
                 gathered_at = content.get("gathered_at", "")
                 if gathered_at:
-                    _set_label(pdf, 8)
-                    pdf.cell(0, 5, _safe(f"Data gathered: {gathered_at}"), ln=True)
-                    pdf.ln(3)
+                    _caption(pdf, f"Data gathered: {gathered_at}")
+                    pdf.ln(4)
 
-                # Live prices
+                # Live prices — inline label: value list
                 live_prices = content.get("live_prices", {}).get("prices", {})
                 macro_inds  = content.get("macro_indicators", {}).get("indicators", {})
-                price_tiles: list[tuple[str, str, str]] = []
+                price_items: list[tuple[str, str]] = []
                 for name, data in live_prices.items():
                     v = data.get("price")
                     u = data.get("unit", "")
                     if v is not None:
-                        price_tiles.append((name, f"{v:,.2f}" if isinstance(v, (int, float)) else str(v), str(u)))
+                        val_str = f"{v:,.2f} {u}".strip() if isinstance(v, (int, float)) else f"{v} {u}".strip()
+                        price_items.append((name.replace("_", " ").title(), val_str))
                 for name, data in macro_inds.items():
                     v = data.get("value")
                     u = data.get("unit", "")
                     if v is not None:
-                        price_tiles.append((name, f"{v:,.2f}" if isinstance(v, (int, float)) else str(v), str(u)))
+                        val_str = f"{v:,.2f} {u}".strip() if isinstance(v, (int, float)) else f"{v} {u}".strip()
+                        price_items.append((name.replace("_", " ").title(), val_str))
 
-                if price_tiles:
-                    _set_label(pdf, 8)
-                    pdf.cell(0, 5, "LIVE MARKET DATA", ln=True)
-                    pdf.ln(3)
-                    _price_tiles(pdf, price_tiles)
+                if price_items:
+                    _label(pdf, "Live market data")
+                    pdf.ln(2)
+                    _kv_list(pdf, price_items)
                     pdf.ln(4)
+                    _rule(pdf)
+                    pdf.ln(6)
 
                 # Project intelligence
                 proj_intel = content.get("project_intelligence", {})
                 if proj_intel.get("findings"):
-                    subject = _safe(proj_intel.get("search_subject", "Project"))
-                    _set_label(pdf, 8)
-                    pdf.cell(0, 5, f"PROJECT INTELLIGENCE: {subject}", ln=True)
+                    subject = proj_intel.get("search_subject", "Project")
+                    _label(pdf, f"Project intelligence — {subject}")
                     pdf.ln(2)
-                    _prose(pdf, proj_intel["findings"], size=9.5)
+                    _prose(pdf, proj_intel["findings"], size=10)
 
                 # Commodity market
                 comm = content.get("commodity_market", {})
                 if comm.get("analysis"):
-                    _set_label(pdf, 8)
-                    pdf.cell(0, 5, _safe(f"COMMODITY MARKET: {comm.get('commodity', '').upper()}"), ln=True)
+                    _label(pdf, f"Commodity market — {comm.get('commodity', '')}")
                     pdf.ln(2)
-                    _prose(pdf, comm["analysis"], size=9.5)
+                    _prose(pdf, comm["analysis"], size=10)
 
                 # Macro context
                 macro = content.get("macro_context", {})
                 if macro.get("analysis"):
-                    _set_label(pdf, 8)
-                    pdf.cell(0, 5, "MACROECONOMIC CONTEXT", ln=True)
+                    _label(pdf, "Macroeconomic context")
                     pdf.ln(2)
-                    _prose(pdf, macro["analysis"], size=9.5)
+                    _prose(pdf, macro["analysis"], size=10)
 
                 notice = content.get("notice")
                 if notice:
-                    pdf.ln(4)
-                    pdf.set_font("Helvetica", "I", 8)
-                    pdf.set_text_color(*_SILVER)
-                    pdf.multi_cell(_PW, 4.5, _safe(notice))
+                    pdf.ln(2)
+                    _caption(pdf, notice)
 
-        # ── DCF Model ─────────────────────────────────────────────────────
+        # ── DCF Financial Model ───────────────────────────────────────────
         elif section_key == "06_dcf_model" and isinstance(content, dict):
             if not content.get("model_ran"):
                 reason = content.get("reason", "DCF model did not run.")
-                _set_body(pdf, 10, "I")
-                pdf.set_text_color(*_SILVER)
-                pdf.multi_cell(_PW, 5.5, _safe(str(reason)))
+                _caption(pdf, str(reason))
             else:
                 notes = content.get("assumptions_notes")
                 if isinstance(notes, str):
-                    _set_body(pdf, 9, "I")
-                    pdf.set_text_color(*_SILVER)
-                    pdf.multi_cell(_PW, 5, _safe(notes))
+                    _caption(pdf, notes)
                     pdf.ln(5)
 
                 summary = content.get("summary")
                 if isinstance(summary, dict):
-                    _set_label(pdf, 8)
-                    pdf.cell(0, 5, "VALUATION SUMMARY", ln=True)
-                    pdf.ln(3)
+                    _label(pdf, "Valuation summary")
+                    pdf.ln(2)
                     skip = {"project_id", "scenario", "after_tax", "notes", "aisc_unit"}
-                    kpi_items = []
-                    for k, v in summary.items():
-                        if k in skip or v is None:
-                            continue
-                        label = k.replace("_", " ").title()
-                        val   = f"{v:,}" if isinstance(v, (int, float)) else str(v)
-                        kpi_items.append((val, label, None))
-                    if kpi_items:
-                        _metric_cards(pdf, kpi_items, cols=min(4, len(kpi_items)))
+                    kv = [
+                        (k.replace("_", " ").title(),
+                         f"{v:,}" if isinstance(v, (int, float)) else str(v))
+                        for k, v in summary.items()
+                        if k not in skip and v is not None
+                    ]
+                    _kv_list(pdf, kv)
+                    pdf.ln(4)
+                    _rule(pdf)
+                    pdf.ln(6)
 
-                # Cash flow table
                 cash_flows = content.get("cash_flows")
                 if isinstance(cash_flows, list) and cash_flows:
-                    _set_label(pdf, 8)
-                    pdf.cell(0, 5, "ANNUAL CASH FLOWS", ln=True)
+                    _label(pdf, "Annual cash flows")
                     pdf.ln(3)
 
                     def _fmt(v):
@@ -690,11 +593,10 @@ def _generate_pdf(project_id: str, run_id: str, sections: dict) -> bytes:
                         if isinstance(v, (int, float)): return f"{v:,.0f}"
                         return str(v)
 
-                    headers = ["Year", "Revenue", "OpEx", "CapEx", "Tax", "FCF", "NPV (PV)"]
-                    col_widths = [18, 30, 27, 27, 22, 28, 28]
-                    rows_data = []
-                    for cf in cash_flows[:20]:
-                        rows_data.append([
+                    headers   = ["Year", "Revenue", "OpEx", "CapEx", "Tax", "FCF", "PV"]
+                    col_widths = [16, 28, 26, 26, 22, 28, 28]
+                    rows_data  = [
+                        [
                             str(cf.get("year", "")),
                             _fmt(cf.get("gross_revenue")),
                             _fmt(cf.get("opex")),
@@ -702,30 +604,26 @@ def _generate_pdf(project_id: str, run_id: str, sections: dict) -> bytes:
                             _fmt(cf.get("tax")),
                             _fmt(cf.get("free_cash_flow")),
                             _fmt(cf.get("present_value")),
-                        ])
-                    _table(pdf, headers, rows_data, col_widths)
+                        ]
+                        for cf in cash_flows[:20]
+                    ]
+                    _simple_table(pdf, headers, rows_data, col_widths)
 
         # ── Data sources ──────────────────────────────────────────────────
         elif section_key == "00_data_sources" and isinstance(content, dict):
             notice = content.get("notice")
             if isinstance(notice, str):
-                _set_body(pdf, 9, "I")
-                pdf.set_text_color(*_SILVER)
-                pdf.multi_cell(_PW, 5, _safe(notice))
-                pdf.ln(5)
+                _caption(pdf, notice)
+                pdf.ln(6)
 
             files = content.get("source_files", [])
             if files:
-                _set_label(pdf, 8)
-                pdf.cell(0, 5, f"SOURCE DOCUMENTS ({len(files)})", ln=True)
+                _label(pdf, f"Source documents ({len(files)})")
                 pdf.ln(3)
-                for i, f in enumerate(files):
-                    fill = i % 2 == 0
-                    if fill:
-                        pdf.set_fill_color(*_BG_LIGHT)
-                        pdf.rect(_LM, pdf.get_y(), _PW, 6, "F")
-                    _set_body(pdf, 9.5)
-                    pdf.cell(_PW, 6, _safe(f"  {f}"), ln=True)
+                for f in files:
+                    pdf.set_font("Helvetica", "", 10)
+                    pdf.set_text_color(*_INK)
+                    pdf.cell(0, 6.5, _safe(f"  {f}"), ln=True)
                 pdf.ln(5)
 
             # Embedded images
@@ -741,20 +639,17 @@ def _generate_pdf(project_id: str, run_id: str, sections: dict) -> bytes:
                     continue
                 if shown == 0:
                     pdf.ln(4)
-                    _set_label(pdf, 8)
-                    pdf.cell(0, 5, "VISUAL REFERENCES", ln=True)
+                    _label(pdf, "Visual references")
                     pdf.ln(3)
                 try:
                     pdf.image(str(img_path), w=min(_PW, 130))
-                    _set_body(pdf, 8, "I")
-                    pdf.set_text_color(*_SILVER)
-                    pdf.cell(0, 4, _safe(img_name), ln=True)
+                    _caption(pdf, img_name)
                     pdf.ln(4)
                     shown += 1
                 except Exception:
                     pass
 
-        # ── Generic section (geology, economics, risk, project facts) ─────
+        # ── Generic sections (geology, economics, risk, project facts) ────
         else:
             flat_lines: list[str] = []
             _flatten_for_pdf(content, flat_lines)
@@ -764,35 +659,33 @@ def _generate_pdf(project_id: str, run_id: str, sections: dict) -> bytes:
                 if not line.strip():
                     pdf.ln(2)
                     continue
-                words = line.split()
-                line = " ".join(w[:120] if len(w) > 120 else w for w in words)
+                line = " ".join(w[:120] if len(w) > 120 else w for w in line.split())
 
                 if line.startswith("*"):
-                    # Bullet
+                    pdf.set_font("Helvetica", "", 10)
+                    pdf.set_text_color(*_INK)
                     pdf.set_x(_LM + 4)
-                    _set_body(pdf, 10)
-                    pdf.multi_cell(_PW - 4, 5.8, line)
+                    pdf.multi_cell(_PW - 4, 6, line)
                     pdf.set_x(_LM)
                 elif line.endswith(":") and len(line) < 50:
-                    # Sub-label
-                    pdf.ln(2)
-                    _set_label(pdf, 8)
-                    pdf.cell(0, 5, line.upper(), ln=True)
+                    pdf.ln(3)
+                    _label(pdf, line.rstrip(":"))
+                    pdf.ln(1)
                 else:
                     colon_pos = line.find(":")
                     if 0 < colon_pos < 35 and "\n" not in line[:colon_pos]:
-                        label_part = line[:colon_pos + 1]
-                        value_part = line[colon_pos + 1:]
-                        _set_body(pdf, 10, "B")
-                        pdf.write(5.8, label_part)
-                        _set_body(pdf, 10)
-                        pdf.write(5.8, value_part)
-                        pdf.ln(5.8)
+                        pdf.set_font("Helvetica", "B", 10)
+                        pdf.set_text_color(*_INK_SOFT)
+                        pdf.write(6.2, line[:colon_pos + 1] + "  ")
+                        pdf.set_font("Helvetica", "", 10)
+                        pdf.set_text_color(*_INK)
+                        pdf.write(6.2, line[colon_pos + 1:].strip())
+                        pdf.ln(6.2)
                     else:
-                        # Long prose
-                        _set_body(pdf, 10)
-                        pdf.multi_cell(_PW, 5.8, line)
-                        pdf.ln(1)
+                        pdf.set_font("Helvetica", "", 10.5)
+                        pdf.set_text_color(*_INK)
+                        pdf.multi_cell(_PW, 6.2, line)
+                        pdf.ln(1.5)
 
         pdf.ln(4)
 
