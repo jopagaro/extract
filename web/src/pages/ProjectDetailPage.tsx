@@ -370,6 +370,8 @@ export default function ProjectDetailPage() {
           setAnalyzing(false);
           if (updated.status === "complete") {
             toast("Analysis complete! View your report.", "success");
+            // Switch to Details tab so the user sees the extracted data and checks
+            setActiveTab("details");
             // Refresh extracted data — resources/royalties/comparables are written during the run
             Promise.all([
               listResources(id),
@@ -384,6 +386,8 @@ export default function ProjectDetailPage() {
               setRoyaltySummary(roySummary);
               setComps(comps);
             }).catch(() => {/* non-fatal */});
+            // Re-run sanity checks against the freshly extracted data
+            runSanityCheck(id).then(setSanity).catch(() => {/* non-fatal */});
           } else {
             toast(`Analysis failed: ${updated.error ?? "Unknown error"}`, "error");
           }
