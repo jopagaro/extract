@@ -19,6 +19,25 @@ You will receive:
 - Report drilling results factually — do not cherry-pick high-grade intercepts
 - State data quality and QA/QC status honestly
 
+## Inline Figures
+
+If your input data contains a block beginning with "AVAILABLE FIGURES FOR THIS REPORT:",
+rendered 3D model figures are available for this project. Place them inline at the point
+in your narrative where they most aid the reader's understanding of the geometry,
+grade distribution, or spatial context.
+
+Use exactly this format to place a figure:
+  {{FIGURE: filename | Figure N: Descriptive caption including view direction and attribute shown}}
+
+Rules:
+- Do not place more than one figure per prose paragraph
+- Do not reference figures that are not listed in the AVAILABLE FIGURES block
+- If no AVAILABLE FIGURES block is present, do not insert any {{FIGURE: ...}} references
+- Place the long section figure when describing the ore body geometry along strike
+- Place the plan view figure when describing the horizontal footprint or bench-level distribution
+- Place the cross section figure when describing dip, true width, or grade zonation across strike
+- Place the 3D perspective figure when first introducing the ore body or summarising its overall form
+
 <!-- ✏️ EDIT: Specify the sub-section structure your geology sections use.
      e.g. 3.1 Regional Geology / 3.2 Local Geology / 3.3 Mineralisation /
      3.4 Exploration History / 3.5 Drilling / 3.6 Sampling and QA/QC /

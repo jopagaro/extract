@@ -39,6 +39,7 @@ multitasking==0.0.12
 mypy==1.19.1
 mypy_extensions==1.1.0
 numpy==2.4.3
+omf==1.0.1
 openai==2.29.0
 openpyxl==3.1.5
 packaging==26.0
@@ -47,6 +48,7 @@ pathspec==1.0.4
 peewee==4.0.2
 pillow==12.1.1
 platformdirs==4.9.4
+pyvista==0.47.1
 pluggy==1.6.0
 polars==1.39.3
 polars-runtime-32==1.39.3

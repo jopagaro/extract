@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { getReport } from "../api/client";
 
@@ -72,7 +72,10 @@ function KeyCallouts({ callouts }: { callouts: { label: string; value: string; c
   );
 }
 
-function NarrativeSection({ assembly }: { assembly: Record<string, unknown> }) {
+function NarrativeSection({ assembly, projectId }: {
+  assembly: Record<string, unknown>;
+  projectId?: string;
+}) {
   const narrative = assembly.narrative as string | undefined;
   const conclusion = assembly.analyst_conclusion as string | undefined;
   const callouts = assembly.key_callouts as { label: string; value: string; context?: string }[] | undefined;
@@ -89,9 +92,14 @@ function NarrativeSection({ assembly }: { assembly: Record<string, unknown> }) {
 
       {paragraphs.length > 0 && (
         <div className="report-narrative-body">
-          {paragraphs.map((para, i) => (
-            <p key={i} className="report-narrative-para">{para}</p>
-          ))}
+          {paragraphs.map((para, i) => {
+            FIGURE_RE.lastIndex = 0;
+            if (FIGURE_RE.test(para) && projectId) {
+              FIGURE_RE.lastIndex = 0;
+              return <React.Fragment key={i}>{renderProseWithFigures(para, projectId)}</React.Fragment>;
+            }
+            return <p key={i} className="report-narrative-para">{para}</p>;
+          })}
         </div>
       )}
 
@@ -146,18 +154,67 @@ function DataTable({ items }: { items: Record<string, unknown>[] }) {
   );
 }
 
-function ProseField({ label, value, showLabel }: { label: string; value: string; showLabel: boolean }) {
+// ── Figure placeholder substitution ──────────────────────────────────────────
+// Handles {{FIGURE: filename | Caption text}} injected by the LLM into prose.
+
+const FIGURE_RE = /\{\{FIGURE:\s*([^|]+)\|([^}]+)\}\}/g;
+
+function renderProseWithFigures(text: string, projectId: string): React.ReactNode[] {
+  const parts = text.split(/({{FIGURE:[^}]+}})/g);
+  return parts.map((part, i) => {
+    const match = part.match(/\{\{FIGURE:\s*([^|]+)\|([^}]+)\}\}/);
+    if (match) {
+      const filename = match[1].trim();
+      const caption  = match[2].trim();
+      return (
+        <figure key={i} style={{ margin: "32px 0", textAlign: "center" }}>
+          <img
+            src={`${API_BASE}/projects/${projectId}/renders/${filename}`}
+            alt={caption}
+            style={{ maxWidth: "100%", borderRadius: 8, border: "1px solid var(--border)" }}
+            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+          />
+          <figcaption style={{
+            fontSize: 12,
+            color: "var(--text-tertiary)",
+            marginTop: 8,
+            fontStyle: "italic",
+            lineHeight: 1.5,
+          }}>
+            {caption}
+          </figcaption>
+        </figure>
+      );
+    }
+    if (!part.trim()) return null;
+    return <p key={i} className="report-prose-para">{part}</p>;
+  }).filter(Boolean) as React.ReactNode[];
+}
+
+function ProseField({ label, value, showLabel, projectId }: {
+  label: string;
+  value: string;
+  showLabel: boolean;
+  projectId?: string;
+}) {
+  const hasFigures = FIGURE_RE.test(value);
+  // Reset lastIndex after test()
+  FIGURE_RE.lastIndex = 0;
+
   return (
     <div className="report-prose-para">
       {showLabel && (
         <div className="report-para-label">{label.replace(/_/g, " ")}</div>
       )}
-      <p>{value}</p>
+      {hasFigures && projectId
+        ? renderProseWithFigures(value, projectId)
+        : <p>{value}</p>
+      }
     </div>
   );
 }
 
-function SpecialistSection({ data }: { data: Record<string, unknown> }) {
+function SpecialistSection({ data, projectId }: { data: Record<string, unknown>; projectId?: string }) {
   const entries = Object.entries(data).filter(([, v]) => v !== null && v !== undefined);
   const prose = entries.filter(([, v]) => typeof v === "string" && (v as string).length > 60);
   const lists = entries.filter(([, v]) => Array.isArray(v) && (v as unknown[]).length > 0);
@@ -169,7 +226,7 @@ function SpecialistSection({ data }: { data: Record<string, unknown> }) {
   return (
     <div className="report-specialist-body">
       {prose.map(([k, v]) => (
-        <ProseField key={k} label={k} value={String(v)} showLabel={!isSingleProse} />
+        <ProseField key={k} label={k} value={String(v)} showLabel={!isSingleProse} projectId={projectId} />
       ))}
 
       {lists.map(([k, v]) => {
@@ -1011,7 +1068,7 @@ export default function ReportPage() {
       return <DcfSection data={content as Record<string, unknown>} />;
     }
     if (key === "07_assembly") {
-      return <NarrativeSection assembly={content as Record<string, unknown>} />;
+      return <NarrativeSection assembly={content as Record<string, unknown>} projectId={id} />;
     }
     if (key === "08_data_gaps") {
       return <DataGapSection data={content as Record<string, unknown>} />;
@@ -1029,7 +1086,7 @@ export default function ReportPage() {
       return <ComplianceSection data={content as Record<string, unknown>} />;
     }
     if (typeof content === "object" && content !== null && !Array.isArray(content)) {
-      return <SpecialistSection data={content as Record<string, unknown>} />;
+      return <SpecialistSection data={content as Record<string, unknown>} projectId={id} />;
     }
     return <pre style={{ fontSize: 12, overflow: "auto" }}>{JSON.stringify(content, null, 2)}</pre>;
   };

@@ -9,6 +9,11 @@ Supported formats:
   .png / .jpg / .jpeg / .tiff — image described by Claude vision API
   .dxf                — layer names, text entities, dimensions via ezdxf
   .dwg                — attempted via ezdxf; returns None if unreadable
+  .omf                — Open Mining Format: block model stats + wireframe geometry
+                        via omf + pyvista; renders saved to save_render_dir
+  .vtk / .vtu         — VTK scientific volume data via pyvista; 3D perspective render
+  .obj / .stl         — 3D mesh geometry via pyvista; renders from 3 angles
+                        (no grade data — geometry description only)
 """
 
 from __future__ import annotations
@@ -55,6 +60,18 @@ def load_document(file_path: Path, save_render_dir: Path | None = None) -> str |
             if save_render_dir else None
         )
         return _extract_cad(file_path, save_render_path=render_path)
+
+    if suffix == ".omf":
+        renders_dir = save_render_dir or (file_path.parent.parent / "normalized" / "renders")
+        return _extract_omf(file_path, renders_dir)
+
+    if suffix in {".vtk", ".vtu"}:
+        renders_dir = save_render_dir or (file_path.parent.parent / "normalized" / "renders")
+        return _extract_vtk(file_path, renders_dir)
+
+    if suffix in {".obj", ".stl"}:
+        renders_dir = save_render_dir or (file_path.parent.parent / "normalized" / "renders")
+        return _extract_mesh(file_path, renders_dir)
 
     return None
 
@@ -347,3 +364,131 @@ def _render_cad_visual(doc: object, path: Path, save_path: Path | None = None) -
 
     except Exception:
         return None
+
+
+# ---------------------------------------------------------------------------
+# OMF — Open Mining Format (3D geological models)
+# ---------------------------------------------------------------------------
+
+def _extract_omf(path: Path, renders_dir: Path) -> str:
+    """Delegate to omf_loader which handles all extraction and rendering."""
+    from engine.core.omf_loader import extract_omf_data
+    return extract_omf_data(path, renders_dir)
+
+
+# ---------------------------------------------------------------------------
+# VTK / VTU — scientific volume data
+# ---------------------------------------------------------------------------
+
+def _extract_vtk(path: Path, renders_dir: Path) -> str:
+    """Extract scalar attributes from a VTK/VTU file and render a 3D perspective."""
+    try:
+        import pyvista as pv
+    except ImportError:
+        return f"[VTK: {path.name} — install 'pyvista' to process VTK files]"
+
+    try:
+        mesh = pv.read(str(path))
+    except Exception as exc:
+        return f"[VTK: {path.name} — could not be parsed: {exc}]"
+
+    parts = [f"[VTK 3D Data: {path.name}]"]
+    parts.append(f"  Type: {type(mesh).__name__}")
+    parts.append(f"  Points: {mesh.n_points:,}   Cells: {mesh.n_cells:,}")
+
+    bounds = mesh.bounds
+    parts.append(
+        f"  Bounds: X {bounds[0]:.0f}–{bounds[1]:.0f}  "
+        f"Y {bounds[2]:.0f}–{bounds[3]:.0f}  Z {bounds[4]:.0f}–{bounds[5]:.0f}"
+    )
+
+    import numpy as np
+    for arr_name in mesh.array_names[:8]:
+        try:
+            arr = mesh[arr_name]
+            if arr.dtype.kind in ("f", "i") and arr.ndim == 1:
+                valid = arr[np.isfinite(arr.astype(float))]
+                if len(valid):
+                    parts.append(
+                        f"  Array '{arr_name}': n={len(valid):,}  "
+                        f"min={valid.min():.4g}  max={valid.max():.4g}  "
+                        f"mean={float(valid.astype(float).mean()):.4g}"
+                    )
+        except Exception:
+            pass
+
+    # Render one perspective view
+    try:
+        renders_dir.mkdir(parents=True, exist_ok=True)
+        out_path = renders_dir / f"{path.stem}_vtk_render.png"
+        pl = pv.Plotter(off_screen=True, window_size=[1400, 1000])
+        pl.background_color = "white"
+        scalars = mesh.array_names[0] if mesh.array_names else None
+        if scalars:
+            pl.add_mesh(mesh, scalars=scalars, cmap="viridis", opacity=0.85)
+        else:
+            pl.add_mesh(mesh, color="#4a90d9", opacity=0.85)
+        pl.screenshot(str(out_path), return_img=False)
+        pl.close()
+        parts.append(f"  [Render saved: {out_path.name}]")
+    except Exception:
+        pass
+
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# OBJ / STL — geometry-only mesh formats
+# ---------------------------------------------------------------------------
+
+def _extract_mesh(path: Path, renders_dir: Path) -> str:
+    """Render a geometry-only mesh from OBJ or STL. No grade data available."""
+    try:
+        import pyvista as pv
+    except ImportError:
+        return f"[Mesh: {path.name} — install 'pyvista' to process 3D mesh files]"
+
+    try:
+        mesh = pv.read(str(path))
+    except Exception as exc:
+        return f"[Mesh: {path.name} — could not be parsed: {exc}]"
+
+    import numpy as np
+    parts = [
+        f"[3D Mesh: {path.name}]",
+        f"  NOTE: This is a geometry-only file — no grade or attribute data is embedded.",
+        f"  Points: {mesh.n_points:,}   Cells/faces: {mesh.n_cells:,}",
+    ]
+
+    bounds = mesh.bounds
+    parts.append(
+        f"  Bounds: X {bounds[0]:.0f}–{bounds[1]:.0f}  "
+        f"Y {bounds[2]:.0f}–{bounds[3]:.0f}  Z {bounds[4]:.0f}–{bounds[5]:.0f}"
+    )
+    centroid = np.array(mesh.center)
+    parts.append(f"  Centroid: X {centroid[0]:.0f}  Y {centroid[1]:.0f}  Z {centroid[2]:.0f}")
+
+    # Three orthographic views
+    try:
+        renders_dir.mkdir(parents=True, exist_ok=True)
+        radius = float(np.linalg.norm(
+            np.array(mesh.bounds[1::2]) - np.array(mesh.bounds[::2])
+        )) * 0.8
+
+        view_configs = [
+            (f"{path.stem}_perspective.png", centroid + np.array([radius, -radius, radius * 0.6])),
+            (f"{path.stem}_plan.png",        centroid + np.array([0, 0, radius * 1.5])),
+            (f"{path.stem}_section.png",     centroid + np.array([radius * 1.5, 0, 0])),
+        ]
+        for fname, cam_pos in view_configs:
+            pl = pv.Plotter(off_screen=True, window_size=[1400, 1000])
+            pl.background_color = "white"
+            pl.add_mesh(mesh, color="#4a90d9", opacity=0.85, show_edges=False)
+            pl.camera_position = [cam_pos.tolist(), centroid.tolist(), [0, 0, 1]]
+            pl.screenshot(str(renders_dir / fname), return_img=False)
+            pl.close()
+        parts.append("  [3 renders saved: perspective, plan, section views]")
+    except Exception:
+        pass
+
+    return "\n".join(parts)

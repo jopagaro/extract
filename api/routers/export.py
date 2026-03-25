@@ -235,13 +235,54 @@ def _body(pdf, text: str, size: float = 10.5) -> None:
     pdf.multi_cell(_PW, 6.2, _safe(text))
 
 
-def _prose(pdf, text: str, size: float = 10.5) -> None:
-    """Render multi-paragraph prose split on blank lines."""
+def _prose(pdf, text: str, size: float = 10.5,
+           omf_renders_dir=None) -> None:
+    """Render multi-paragraph prose, substituting {{FIGURE: ...}} placeholders."""
+    import re
+    _FIG_RE = re.compile(r'\{\{FIGURE:\s*([^|]+)\|([^}]+)\}\}')
+
     pdf.set_font("Helvetica", "", size)
     pdf.set_text_color(*_INK)
-    for para in [p.strip() for p in text.split("\n\n") if p.strip()]:
-        pdf.multi_cell(_PW, 6.2, _safe(" ".join(para.split())))
-        pdf.ln(4)
+
+    # Split on figure placeholders first, then split remaining text on blank lines
+    segments = _FIG_RE.split(text)
+    # _FIG_RE.split produces: [text, filename, caption, text, filename, caption, ...]
+    i = 0
+    while i < len(segments):
+        if i % 3 == 0:
+            # Plain prose segment
+            for para in [p.strip() for p in segments[i].split("\n\n") if p.strip()]:
+                pdf.set_font("Helvetica", "", size)
+                pdf.set_text_color(*_INK)
+                pdf.multi_cell(_PW, 6.2, _safe(" ".join(para.split())))
+                pdf.ln(4)
+        elif i % 3 == 1:
+            # Figure: segments[i] = filename, segments[i+1] = caption
+            filename = segments[i].strip()
+            caption  = segments[i + 1].strip() if i + 1 < len(segments) else filename
+            # Look for render in normalized/renders/ first, then raw/renders/
+            img_path = None
+            if omf_renders_dir is not None:
+                candidate = omf_renders_dir / filename
+                if candidate.exists():
+                    img_path = candidate
+            if img_path is None:
+                from pathlib import Path as _Path
+                # Try to find in project renders dirs (passed via closure in _generate_pdf)
+                pass
+            if img_path and img_path.suffix.lower() in {".png", ".jpg", ".jpeg"}:
+                try:
+                    pdf.ln(4)
+                    pdf.image(str(img_path), w=_PW)
+                    pdf.ln(2)
+                    _caption(pdf, caption)
+                    pdf.ln(6)
+                except Exception:
+                    _caption(pdf, f"[Figure not available: {filename}]")
+            else:
+                _caption(pdf, f"[Figure: {filename} — {caption}]")
+            i += 1  # skip caption segment (already consumed)
+        i += 1
 
 
 def _caption(pdf, text: str) -> None:
@@ -362,11 +403,15 @@ _PDF_SECTION_META: dict[str, dict] = {
 # ---------------------------------------------------------------------------
 
 def _generate_pdf(project_id: str, run_id: str, sections: dict) -> bytes:
+    import re
     from fpdf import FPDF
 
-    raw_dir     = project_root(project_id) / "raw" / "documents"
-    renders_dir = project_root(project_id) / "raw" / "renders"
-    IMAGE_EXTS  = {".png", ".jpg", ".jpeg", ".tiff"}
+    raw_dir      = project_root(project_id) / "raw" / "documents"
+    renders_dir  = project_root(project_id) / "raw" / "renders"
+    omf_renders  = project_root(project_id) / "normalized" / "renders"
+    IMAGE_EXTS   = {".png", ".jpg", ".jpeg", ".tiff"}
+
+    _FIGURE_RE = re.compile(r'\{\{FIGURE:\s*([^|]+)\|([^}]+)\}\}')
 
     class ReportPDF(FPDF):
         def header(self):
@@ -1194,11 +1239,18 @@ def _generate_pdf(project_id: str, run_id: str, sections: dict) -> bytes:
             flat_lines: list[str] = []
             _flatten_for_pdf(content, flat_lines)
 
-            for line in flat_lines:
-                line = _safe(str(line))
-                if not line.strip():
+            for raw_line in flat_lines:
+                raw_str = str(raw_line)
+                if not raw_str.strip():
                     pdf.ln(2)
                     continue
+
+                # Long prose lines may contain {{FIGURE: ...}} placeholders
+                if len(raw_str) > 80 and "{{FIGURE:" in raw_str:
+                    _prose(pdf, raw_str, omf_renders_dir=omf_renders)
+                    continue
+
+                line = _safe(raw_str)
                 line = " ".join(w[:120] if len(w) > 120 else w for w in line.split())
 
                 if line.startswith("*"):

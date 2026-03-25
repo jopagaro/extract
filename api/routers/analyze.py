@@ -140,9 +140,12 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
 
         _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".tiff", ".gif", ".webp"}
         _CAD_EXTS = {".dxf", ".dwg"}
+        _OMF_EXTS = {".omf", ".vtk", ".vtu", ".obj", ".stl"}
 
         renders_dir = project_root(project_id) / "raw" / "renders"
         renders_dir.mkdir(parents=True, exist_ok=True)
+        omf_renders_dir = project_root(project_id) / "normalized" / "renders"
+        omf_renders_dir.mkdir(parents=True, exist_ok=True)
 
         text_parts = []
         source_files = []
@@ -150,7 +153,11 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
         load_errors = []
         for rf in raw_files:
             try:
-                text = load_document(rf, save_render_dir=renders_dir)
+                # OMF / 3D files save renders to normalized/renders/
+                if rf.suffix.lower() in _OMF_EXTS:
+                    text = load_document(rf, save_render_dir=omf_renders_dir)
+                else:
+                    text = load_document(rf, save_render_dir=renders_dir)
                 if text and text.strip():
                     text_parts.append(f"[Source: {rf.name}]\n{text}")
                     source_files.append(rf.name)
@@ -168,6 +175,24 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
 
         project_data = "\n\n---\n\n".join(text_parts)
         truncated = project_data[:50000]
+
+        # ── Build figures context from OMF renders manifest (if present) ────
+        figures_context = ""
+        manifest_path = omf_renders_dir / "renders_manifest.json"
+        if manifest_path.exists():
+            try:
+                manifest = json.loads(manifest_path.read_text())
+                render_entries = manifest.get("renders", [])
+                if render_entries:
+                    lines = [f'{r["filename"]} — {r["description"]}' for r in render_entries]
+                    figures_context = (
+                        "\n\nAVAILABLE FIGURES FOR THIS REPORT:\n"
+                        + "\n".join(lines)
+                        + "\nInsert figures inline using: "
+                        "{{FIGURE: filename | Figure N: Descriptive caption}}\n"
+                    )
+            except Exception as fig_exc:
+                logger.warning("Could not read renders manifest: %s", fig_exc)
 
         # ── Step 2: Extract project facts ──────────────────────────────────
         update("Extracting project facts")
@@ -463,12 +488,14 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
         )
 
         async def _write_sections() -> tuple[dict, dict, dict, dict, dict, dict, dict]:
+            # Inject figures context into geology and economics prompts when available
+            combined_with_figs = combined + figures_context if figures_context else combined
             (
                 geology, economics, risks,
                 gaps_resp, confidence_resp, contradictions_resp, compliance_resp,
             ) = await asyncio.gather(
-                write_geology_section(combined, run_id=run_id),
-                write_economics_section(combined, run_id=run_id, extra_context=dcf_context),
+                write_geology_section(combined_with_figs, run_id=run_id),
+                write_economics_section(combined_with_figs, run_id=run_id, extra_context=dcf_context),
                 write_risk_section(combined, run_id=run_id),
                 flag_missing_data(combined, run_id=run_id),
                 assess_confidence(combined, run_id=run_id),
