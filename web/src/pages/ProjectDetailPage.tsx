@@ -304,6 +304,7 @@ export default function ProjectDetailPage() {
   const [newsFeed, setNewsFeed] = useState<NewsFeed | null>(null);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsRefreshing, setNewsRefreshing] = useState(false);
+  const [expandedNewsIds, setExpandedNewsIds] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState<Note[]>([]);
   const [noteText, setNoteText] = useState("");
   const [noteTag, setNoteTag] = useState("");
@@ -2215,77 +2216,106 @@ export default function ProjectDetailPage() {
           {/* News items */}
           {newsFeed && newsFeed.items.length > 0 && (() => {
             const CATEGORY_LABELS: Record<string, string> = {
-              resource_update: "Resource", financing: "Financing", permitting: "Permitting",
+              resource_update: "Resource Update", financing: "Financing", permitting: "Permitting",
               acquisition: "M&A", production: "Production", management: "Management",
               esg: "ESG", market: "Market", other: "Other",
             };
-            const SENTIMENT_COLOR: Record<string, string> = {
-              positive: "#16a34a", negative: "#dc3535", neutral: "var(--text-secondary)",
+            const RELEVANCE_DOT: Record<string, string> = {
+              high: "#0071e3", medium: "#8e8e93", low: "#c7c7cc",
             };
-            const RELEVANCE_STYLE: Record<string, React.CSSProperties> = {
-              high:   { background: "#dcfce7", color: "#166534", border: "1px solid #bbf7d0" },
-              medium: { background: "#fef9c3", color: "#854d0e", border: "1px solid #fde68a" },
-              low:    { background: "var(--bg-secondary)", color: "var(--text-secondary)", border: "1px solid var(--border)" },
-            };
-            const CATEGORY_STYLE: React.CSSProperties = {
-              display: "inline-block", padding: "1px 7px", borderRadius: 4,
-              fontSize: 11, fontWeight: 600, background: "var(--bg-secondary)",
-              border: "1px solid var(--border)", color: "var(--text-secondary)",
+            const RELEVANCE_LABEL: Record<string, string> = {
+              high: "High relevance", medium: "Medium relevance", low: "Sector context",
             };
 
             return (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {newsFeed.items.map((item: NewsItem) => (
-                  <div
-                    key={item.news_id}
-                    style={{
-                      background: "var(--bg-primary)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      padding: "14px 16px",
-                    }}
-                  >
-                    {/* Top row: headline + relevance badge */}
-                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
-                      <div style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.4, flex: 1 }}>
-                        {item.url
-                          ? <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "none" }}>{item.headline}</a>
-                          : item.headline}
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {newsFeed.items.map((item: NewsItem, idx: number) => {
+                  const isExpanded = expandedNewsIds.has(item.news_id);
+                  const hasSummary = item.summary &&
+                    !item.summary.trim().startsWith("{") &&
+                    !item.summary.trim().startsWith("[");
+                  const toggle = () => setExpandedNewsIds(prev => {
+                    const next = new Set(prev);
+                    if (next.has(item.news_id)) next.delete(item.news_id);
+                    else next.add(item.news_id);
+                    return next;
+                  });
+
+                  return (
+                    <div
+                      key={item.news_id}
+                      style={{
+                        padding: "14px 0",
+                        borderBottom: idx < newsFeed.items.length - 1 ? "1px solid var(--border)" : "none",
+                      }}
+                    >
+                      {/* Headline row */}
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 5 }}>
+                        {/* Relevance dot */}
+                        <span
+                          title={RELEVANCE_LABEL[item.relevance] ?? item.relevance}
+                          style={{
+                            flexShrink: 0, marginTop: 5,
+                            width: 7, height: 7, borderRadius: "50%",
+                            background: RELEVANCE_DOT[item.relevance] ?? RELEVANCE_DOT.medium,
+                          }}
+                        />
+                        <div style={{ flex: 1, fontWeight: 600, fontSize: 14, lineHeight: 1.45 }}>
+                          {item.headline}
+                        </div>
                       </div>
-                      <span style={{ ...RELEVANCE_STYLE[item.relevance] ?? RELEVANCE_STYLE.medium, padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>
-                        {item.relevance} relevance
-                      </span>
-                    </div>
 
-                    {/* Meta row */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{item.date}</span>
-                      <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>·</span>
-                      <span style={{ fontSize: 12, color: "var(--text-secondary)", fontStyle: "italic" }}>{item.source}</span>
-                      <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>·</span>
-                      <span style={CATEGORY_STYLE}>{CATEGORY_LABELS[item.category] ?? item.category}</span>
-                      <span style={{ fontSize: 12, color: SENTIMENT_COLOR[item.sentiment] ?? "var(--text-secondary)", fontWeight: 600 }}>
-                        {item.sentiment === "positive" ? "▲" : item.sentiment === "negative" ? "▼" : "–"} {item.sentiment}
-                      </span>
-                    </div>
-
-                    {/* Summary */}
-                    <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
-                      {item.summary}
-                    </div>
-
-                    {/* Tags */}
-                    {item.tags && item.tags.length > 0 && (
-                      <div style={{ marginTop: 8, display: "flex", gap: 5, flexWrap: "wrap" }}>
-                        {item.tags.map((tag: string) => (
-                          <span key={tag} style={{ fontSize: 11, padding: "1px 7px", borderRadius: 10, background: "var(--bg-secondary)", color: "var(--text-tertiary)", border: "1px solid var(--border)" }}>
-                            {tag}
-                          </span>
-                        ))}
+                      {/* Meta line */}
+                      <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: hasSummary ? 6 : 0, paddingLeft: 17, display: "flex", flexWrap: "wrap", gap: "0 6px" }}>
+                        {item.date && <span>{item.date}</span>}
+                        {item.source && <><span>·</span><span style={{ fontStyle: "italic" }}>{item.source}</span></>}
+                        {item.category && <><span>·</span><span>{CATEGORY_LABELS[item.category] ?? item.category}</span></>}
+                        {item.sentiment && item.sentiment !== "neutral" && (
+                          <><span>·</span><span>{item.sentiment === "positive" ? "Positive" : "Negative"}</span></>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
+
+                      {/* Expand / collapse summary + article link */}
+                      {hasSummary && (
+                        <div style={{ paddingLeft: 17 }}>
+                          <button
+                            onClick={toggle}
+                            style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 12, color: "var(--accent)", display: "flex", alignItems: "center", gap: 4 }}
+                          >
+                            <span style={{ fontSize: 10, transform: isExpanded ? "rotate(90deg)" : "none", display: "inline-block", transition: "transform 0.15s" }}>▶</span>
+                            {isExpanded ? "Hide summary" : "Read AI summary"}
+                          </button>
+                          {isExpanded && (
+                            <div style={{ marginTop: 8, fontSize: 13.5, color: "var(--text-secondary)", lineHeight: 1.7 }}>
+                              {item.summary}
+                              {item.url && (
+                                <div style={{ marginTop: 8 }}>
+                                  <a href={item.url} target="_blank" rel="noopener noreferrer"
+                                    style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none" }}
+                                    onMouseOver={e => (e.currentTarget.style.textDecoration = "underline")}
+                                    onMouseOut={e => (e.currentTarget.style.textDecoration = "none")}>
+                                    Read full article →
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {/* No summary but has URL */}
+                      {!hasSummary && item.url && (
+                        <div style={{ paddingLeft: 17, marginTop: 4 }}>
+                          <a href={item.url} target="_blank" rel="noopener noreferrer"
+                            style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none" }}
+                            onMouseOver={e => (e.currentTarget.style.textDecoration = "underline")}
+                            onMouseOut={e => (e.currentTarget.style.textDecoration = "none")}>
+                            Read article →
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             );
           })()}
