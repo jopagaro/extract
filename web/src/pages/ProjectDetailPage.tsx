@@ -370,6 +370,20 @@ export default function ProjectDetailPage() {
           setAnalyzing(false);
           if (updated.status === "complete") {
             toast("Analysis complete! View your report.", "success");
+            // Refresh extracted data — resources/royalties/comparables are written during the run
+            Promise.all([
+              listResources(id),
+              getResourceSummary(id),
+              listRoyalties(id),
+              getRoyaltySummary(id),
+              listComparables(id),
+            ]).then(([res, resSummary, roy, roySummary, comps]) => {
+              setResources(res);
+              setResourceSummary(resSummary);
+              setRoyaltyList(roy);
+              setRoyaltySummary(roySummary);
+              setComps(comps);
+            }).catch(() => {/* non-fatal */});
           } else {
             toast(`Analysis failed: ${updated.error ?? "Unknown error"}`, "error");
           }
