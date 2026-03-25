@@ -382,6 +382,95 @@ function DataGapSection({ data }: { data: Record<string, unknown> }) {
   );
 }
 
+// ── Confidence Assessment Section ────────────────────────────────────────────
+
+type DomainConfidence = {
+  domain: string;
+  confidence_descriptor: string;
+  supporting_factors: string[];
+  limiting_factors: string[];
+};
+
+function ConfidenceSection({ data }: { data: Record<string, unknown> }) {
+  const overall = data.overall_confidence_statement as string | undefined;
+  const best    = data.most_reliable_aspect as string | undefined;
+  const worst   = data.least_reliable_aspect as string | undefined;
+  const domains = (data.domain_confidence as DomainConfidence[]) ?? [];
+
+  return (
+    <div className="report-specialist-body">
+      {overall && (
+        <p style={{ lineHeight: 1.75, marginBottom: 20 }}>{overall}</p>
+      )}
+
+      {(best || worst) && (
+        <div style={{
+          display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
+          marginBottom: 24, paddingBottom: 20,
+          borderBottom: "1px solid var(--border)",
+        }}>
+          {best && (
+            <div style={{ padding: "12px 16px", background: "var(--success-light)", borderRadius: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--success)", marginBottom: 6 }}>
+                Most reliable
+              </div>
+              <div style={{ fontSize: 13, lineHeight: 1.5 }}>{best}</div>
+            </div>
+          )}
+          {worst && (
+            <div style={{ padding: "12px 16px", background: "var(--warning-light)", borderRadius: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--warning)", marginBottom: 6 }}>
+                Least reliable
+              </div>
+              <div style={{ fontSize: 13, lineHeight: 1.5 }}>{worst}</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {domains.map((d, i) => (
+        <div key={i} style={{
+          paddingBottom: 18, marginBottom: 18,
+          borderBottom: i < domains.length - 1 ? "1px solid var(--border)" : "none",
+        }}>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 5 }}>{d.domain}</div>
+          {d.confidence_descriptor && (
+            <p style={{ margin: "0 0 8px", fontSize: 14, fontStyle: "italic", color: "var(--text-secondary)", lineHeight: 1.6 }}>
+              {d.confidence_descriptor}
+            </p>
+          )}
+          <div style={{ display: "flex", gap: 24 }}>
+            {d.supporting_factors?.length > 0 && (
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--success)", marginBottom: 4 }}>
+                  Supports confidence
+                </div>
+                {d.supporting_factors.map((f, j) => (
+                  <div key={j} style={{ fontSize: 12.5, color: "var(--text-secondary)", marginBottom: 2 }}>+ {f}</div>
+                ))}
+              </div>
+            )}
+            {d.limiting_factors?.length > 0 && (
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--warning)", marginBottom: 4 }}>
+                  Limits confidence
+                </div>
+                {d.limiting_factors.map((f, j) => (
+                  <div key={j} style={{ fontSize: 12.5, color: "var(--text-secondary)", marginBottom: 2 }}>− {f}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+
+      {domains.length === 0 && (
+        <p style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>No confidence assessment available.</p>
+      )}
+    </div>
+  );
+}
+
 function ImageGallery({
   projectId,
   imageFiles,
@@ -467,6 +556,7 @@ const SECTION_CONFIG: Record<string, {
   "05_risks":           { title: "Risks & Uncertainties", subtitle: "Material risks and mitigations", layer: "detail", number: "3" },
   "06_dcf_model":       { title: "DCF Financial Model", subtitle: "Computed discounted cash flow analysis", layer: "detail", number: "4" },
   "08_data_gaps":       { title: "Data Gap Report", subtitle: "Material information gaps and recommended actions", layer: "detail", number: "5" },
+  "09_confidence":      { title: "Confidence Assessment", subtitle: "How much trust to place in each section of this report", layer: "detail", number: "6" },
   "00_data_sources":    { title: "Appendix A — Source Documents", subtitle: "All documents used in this analysis", layer: "appendix" },
   "01_project_facts":   { title: "Project Facts", layer: "hidden" },
   "02_executive_summary": { title: "Executive Summary", layer: "hidden" }, // legacy — replaced by assembly
@@ -596,6 +686,9 @@ export default function ReportPage() {
     }
     if (key === "08_data_gaps") {
       return <DataGapSection data={content as Record<string, unknown>} />;
+    }
+    if (key === "09_confidence") {
+      return <ConfidenceSection data={content as Record<string, unknown>} />;
     }
     if (typeof content === "object" && content !== null && !Array.isArray(content)) {
       return <SpecialistSection data={content as Record<string, unknown>} />;

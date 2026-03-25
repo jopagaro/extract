@@ -55,6 +55,7 @@ SECTION_TITLES = {
     "05_risks":               "Risks & Uncertainties",
     "06_dcf_model":           "DCF Financial Model",
     "08_data_gaps":           "Data Gap Report",
+    "09_confidence":          "Confidence Assessment",
     "00_data_sources":        "Appendix A — Source Documents",
     "project_facts":          "Project Facts",
     "geology_summary":        "Geology",
@@ -328,6 +329,7 @@ _PDF_SECTION_ORDER = [
     "05_risks",
     "06_dcf_model",
     "08_data_gaps",
+    "09_confidence",
     "00_data_sources",
     "01_project_facts",
 ]
@@ -340,6 +342,7 @@ _PDF_SECTION_META: dict[str, dict] = {
     "05_risks":               {"title": "Risks & Uncertainties",           "subtitle": "Material risks and mitigations",              "num": "3"},
     "06_dcf_model":           {"title": "DCF Financial Model",             "subtitle": "Discounted cash flow analysis",               "num": "4"},
     "08_data_gaps":           {"title": "Data Gap Report",                 "subtitle": "Material information gaps and recommended actions", "num": None},
+    "09_confidence":          {"title": "Confidence Assessment",           "subtitle": "How much trust to place in each section of this report", "num": None},
     "00_data_sources":        {"title": "Appendix A — Source Documents",   "subtitle": None,                                          "num": None},
     "01_project_facts":       {"title": "Project Facts",                   "subtitle": None,                                          "num": None},
 }
@@ -721,6 +724,81 @@ def _generate_pdf(project_id: str, run_id: str, sections: dict) -> bytes:
                         pdf.set_font("Helvetica", "", 9.5)
                         pdf.set_text_color(*_INK_SOFT)
                         pdf.multi_cell(_PW, 5.5, _safe(f"Action: {action}"))
+
+                    pdf.ln(5)
+                    _rule(pdf)
+                    pdf.ln(5)
+
+        # ── Confidence Assessment ─────────────────────────────────────────
+        elif section_key == "09_confidence" and isinstance(content, dict):
+            overall = content.get("overall_confidence_statement")
+            if isinstance(overall, str):
+                _prose(pdf, overall)
+                pdf.ln(2)
+                _rule(pdf)
+                pdf.ln(6)
+
+            best = content.get("most_reliable_aspect")
+            worst = content.get("least_reliable_aspect")
+            if best or worst:
+                if best:
+                    pdf.set_font("Helvetica", "B", 10)
+                    pdf.set_text_color(*_INK_SOFT)
+                    pdf.write(6.2, "Most reliable:  ")
+                    pdf.set_font("Helvetica", "", 10)
+                    pdf.set_text_color(*_INK)
+                    pdf.write(6.2, _safe(str(best)))
+                    pdf.ln(7)
+                if worst:
+                    pdf.set_font("Helvetica", "B", 10)
+                    pdf.set_text_color(*_INK_SOFT)
+                    pdf.write(6.2, "Least reliable:  ")
+                    pdf.set_font("Helvetica", "", 10)
+                    pdf.set_text_color(*_INK)
+                    pdf.write(6.2, _safe(str(worst)))
+                    pdf.ln(7)
+                pdf.ln(4)
+                _rule(pdf)
+                pdf.ln(6)
+
+            domains = content.get("domain_confidence", [])
+            if isinstance(domains, list) and domains:
+                _label(pdf, f"Domain breakdown ({len(domains)} areas)")
+                pdf.ln(4)
+                for d in domains:
+                    if not isinstance(d, dict): continue
+                    if pdf.get_y() > 250: pdf.add_page()
+
+                    domain_name = str(d.get("domain", ""))
+                    descriptor  = str(d.get("confidence_descriptor", ""))
+                    supporting  = d.get("supporting_factors", [])
+                    limiting    = d.get("limiting_factors", [])
+
+                    pdf.set_font("Helvetica", "B", 10)
+                    pdf.set_text_color(*_INK)
+                    pdf.multi_cell(_PW, 6, _safe(domain_name))
+                    pdf.ln(1)
+
+                    if descriptor:
+                        pdf.set_font("Helvetica", "I", 10)
+                        pdf.set_text_color(*_INK_SOFT)
+                        pdf.multi_cell(_PW, 5.8, _safe(descriptor))
+                        pdf.ln(3)
+
+                    if supporting:
+                        pdf.set_font("Helvetica", "", 9)
+                        pdf.set_text_color(*_GRAY)
+                        pdf.write(5.5, "Supports: ")
+                        pdf.set_text_color(*_INK_SOFT)
+                        pdf.multi_cell(_PW, 5.5, _safe("  ·  ".join(str(f) for f in supporting)))
+                        pdf.ln(1)
+
+                    if limiting:
+                        pdf.set_font("Helvetica", "", 9)
+                        pdf.set_text_color(*_GRAY)
+                        pdf.write(5.5, "Limits: ")
+                        pdf.set_text_color(*_INK_SOFT)
+                        pdf.multi_cell(_PW, 5.5, _safe("  ·  ".join(str(f) for f in limiting)))
 
                     pdf.ln(5)
                     _rule(pdf)

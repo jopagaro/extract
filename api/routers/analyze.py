@@ -321,6 +321,7 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
         from engine.llm.reporting.write_economics_section import write_economics_section
         from engine.llm.reporting.write_risk_section import write_risk_section
         from engine.llm.critique.flag_missing_data import flag_missing_data
+        from engine.llm.scoring.assess_confidence import assess_confidence
 
         dcf_context = (
             "COMPUTED DCF MODEL:\n" + json.dumps(dcf_output, indent=2)
@@ -328,26 +329,29 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
             else None
         )
 
-        async def _write_sections() -> tuple[dict, dict, dict, dict]:
-            geology, economics, risks, gaps_resp = await asyncio.gather(
+        async def _write_sections() -> tuple[dict, dict, dict, dict, dict]:
+            geology, economics, risks, gaps_resp, confidence_resp = await asyncio.gather(
                 write_geology_section(combined, run_id=run_id),
                 write_economics_section(combined, run_id=run_id, extra_context=dcf_context),
                 write_risk_section(combined, run_id=run_id),
                 flag_missing_data(combined, run_id=run_id),
+                assess_confidence(combined, run_id=run_id),
             )
             return (
                 _extract_response_data(geology),
                 _extract_response_data(economics),
                 _extract_response_data(risks),
                 _extract_response_data(gaps_resp),
+                _extract_response_data(confidence_resp),
             )
 
-        geology, economics, risks, data_gaps = asyncio.run(_write_sections())
+        geology, economics, risks, data_gaps, confidence = asyncio.run(_write_sections())
 
         _save_section(project_id, run_id, "03_geology", geology)
         _save_section(project_id, run_id, "04_economics", economics)
         _save_section(project_id, run_id, "05_risks", risks)
         _save_section(project_id, run_id, "08_data_gaps", data_gaps)
+        _save_section(project_id, run_id, "09_confidence", confidence)
 
         # ── Step 4: Assemble narrative synthesis ────────────────────────────
         update("Writing analyst narrative")
