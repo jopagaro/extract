@@ -11,9 +11,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
@@ -197,6 +200,116 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
             _save_section(project_id, run_id, "12_jurisdiction_risk", juris_data)
         except Exception:
             pass  # non-fatal — don't block the pipeline
+
+        # ── Step 2.2: Extract resources, royalties, comparables in parallel ──
+        # These save to normalized/metadata/ so they persist across runs and
+        # feed the Details tab directly.
+        update("Extracting resources, royalties, and comparables")
+        try:
+            from engine.llm.extraction.extract_resource_table import extract_resource_table
+            from engine.llm.extraction.extract_royalties import extract_royalties
+            from engine.llm.extraction.extract_comparable_transactions import extract_comparable_transactions
+
+            async def _extract_detail_data() -> tuple[dict, dict, dict]:
+                res, roy, comps = await asyncio.gather(
+                    extract_resource_table(truncated, run_id=run_id),
+                    extract_royalties(truncated, run_id=run_id),
+                    extract_comparable_transactions(truncated, run_id=run_id),
+                )
+                return (
+                    _extract_response_data(res),
+                    _extract_response_data(roy),
+                    _extract_response_data(comps),
+                )
+
+            res_data, roy_data, comp_data = asyncio.run(_extract_detail_data())
+
+            # Write to normalized/metadata/ using the same storage paths as the
+            # royalties/resources/comparables routers, tagged with the run that
+            # produced them so the UI can show provenance.
+            import uuid
+            from datetime import datetime, timezone as _tz
+            now = datetime.now(_tz.utc).isoformat()
+            meta_dir = project_root(project_id) / "normalized" / "metadata"
+            meta_dir.mkdir(parents=True, exist_ok=True)
+
+            # Resources — convert prompt rows → ResourceRow schema
+            if not res_data.get("not_found") and res_data.get("rows"):
+                resource_rows = []
+                for row in res_data["rows"]:
+                    resource_rows.append({
+                        "row_id": str(uuid.uuid4()),
+                        "classification": row.get("classification") or "Inferred",
+                        "domain": row.get("domain"),
+                        "tonnage_mt": row.get("tonnage_mt"),
+                        "grade_value": row.get("grade_value"),
+                        "grade_unit": row.get("grade_unit"),
+                        "contained_metal": row.get("contained_metal"),
+                        "metal_unit": row.get("metal_unit"),
+                        "cut_off_grade": row.get("cut_off_grade"),
+                        "notes": row.get("notes"),
+                        "source": f"Extracted by AI · run {run_id}",
+                        "created_at": now,
+                        "updated_at": now,
+                    })
+                with (meta_dir / "resources.json").open("w") as f:
+                    json.dump(resource_rows, f, indent=2)
+
+            # Royalties — convert prompt agreements → Royalty schema
+            if not roy_data.get("not_found") and roy_data.get("agreements"):
+                royalty_rows = []
+                for ag in roy_data["agreements"]:
+                    royalty_rows.append({
+                        "royalty_id": str(uuid.uuid4()),
+                        "royalty_type": ag.get("royalty_type") or "Other",
+                        "holder": ag.get("holder") or "Unknown",
+                        "rate_pct": ag.get("rate_pct"),
+                        "metals_covered": ag.get("metals_covered"),
+                        "area_covered": ag.get("area_covered"),
+                        "stream_pct": ag.get("stream_pct"),
+                        "stream_purchase_price": ag.get("stream_purchase_price"),
+                        "stream_purchase_unit": ag.get("stream_purchase_unit"),
+                        "sliding_scale_notes": ag.get("sliding_scale_notes"),
+                        "production_rate": ag.get("production_rate"),
+                        "production_unit": ag.get("production_unit"),
+                        "buyback_option": bool(ag.get("buyback_option")),
+                        "buyback_price_musd": ag.get("buyback_price_musd"),
+                        "recorded_instrument": ag.get("recorded_instrument"),
+                        "notes": ag.get("notes"),
+                        "source": f"Extracted by AI · run {run_id}",
+                        "created_at": now,
+                        "updated_at": now,
+                    })
+                with (meta_dir / "royalties.json").open("w") as f:
+                    json.dump(royalty_rows, f, indent=2)
+
+            # Comparables — convert prompt transactions → Comparable schema
+            if not comp_data.get("not_found") and comp_data.get("transactions"):
+                comp_rows = []
+                for tx in comp_data["transactions"]:
+                    comp_rows.append({
+                        "comp_id": str(uuid.uuid4()),
+                        "project_name": tx.get("project_name") or "Unknown",
+                        "acquirer": tx.get("acquirer"),
+                        "seller": tx.get("seller"),
+                        "commodity": tx.get("commodity"),
+                        "transaction_date": tx.get("transaction_date"),
+                        "transaction_value_musd": tx.get("transaction_value_musd"),
+                        "resource_moz_or_mlb": tx.get("resource_moz_or_mlb"),
+                        "price_per_unit_usd": tx.get("price_per_unit_usd"),
+                        "study_stage": tx.get("study_stage"),
+                        "jurisdiction": tx.get("jurisdiction"),
+                        "notes": tx.get("notes"),
+                        "source": f"Extracted by AI · run {run_id}",
+                        "created_at": now,
+                        "updated_at": now,
+                    })
+                with (meta_dir / "comparables.json").open("w") as f:
+                    json.dump(comp_rows, f, indent=2)
+
+        except Exception as detail_exc:
+            import traceback
+            logger.warning("Detail extraction failed (non-fatal): %s", detail_exc)
 
         # ── Step 2.5: Gather market intelligence (live prices + web search) ─
         update("Gathering market intelligence")

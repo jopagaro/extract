@@ -1445,8 +1445,14 @@ export default function ProjectDetailPage() {
 
           {/* Royalties */}
           <div className="details-section">
-            <div className="details-section-heading">Royalties &amp; Encumbrances</div>
-          {/* Warnings — plain text notes */}
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 16 }}>
+              <div className="details-section-heading" style={{ marginBottom: 0 }}>Royalties &amp; Encumbrances</div>
+              <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+                {royaltyList.length > 0 ? `${royaltyList.length} agreement${royaltyList.length !== 1 ? "s" : ""} extracted from documents` : "Extracted from uploaded documents on analysis"}
+              </span>
+            </div>
+
+          {/* Warnings */}
           {royaltySummary && royaltySummary.warnings.length > 0 && (
             <ul style={{ margin: "0 0 20px", paddingLeft: 20, fontSize: 13.5, color: "var(--text-secondary)", lineHeight: 1.8 }}>
               {royaltySummary.warnings.map((w, i) => (
@@ -1460,245 +1466,123 @@ export default function ProjectDetailPage() {
             </ul>
           )}
 
-          {/* Summary chips */}
-          {royaltySummary && royaltyList.length > 0 && (
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
-              {[
-                { label: "Agreements", value: String(royaltySummary.total_agreements) },
-                ...(royaltySummary.nsr_equivalent_pct != null
-                  ? [{ label: "NSR / GR Total", value: `${royaltySummary.nsr_equivalent_pct}%`, warn: royaltySummary.nsr_equivalent_pct >= 2 }]
-                  : []),
-                ...(royaltySummary.has_stream ? [{ label: "Stream", value: "Yes", warn: false }] : []),
-                ...(royaltySummary.has_npi ? [{ label: "NPI", value: "Yes", warn: false }] : []),
-                ...(royaltySummary.buyback_options > 0 ? [{ label: "Buyback Options", value: String(royaltySummary.buyback_options), warn: false }] : []),
-              ].map(({ label, value, warn }) => (
-                <div key={label} className="card" style={{ padding: "10px 14px", textAlign: "center", minWidth: 100 }}>
-                  <div style={{ fontSize: 10, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>{label}</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: warn ? "#d97706" : "var(--text-primary)" }}>{value}</div>
-                </div>
-              ))}
-              {royaltySummary.holders.length > 0 && (
-                <div className="card" style={{ padding: "10px 14px" }}>
-                  <div style={{ fontSize: 10, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Holders</div>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>{royaltySummary.holders.join(", ")}</div>
-                </div>
-              )}
+          {/* Royalties table — primary display */}
+          {royaltyList.length > 0 ? (
+            <div style={{ overflowX: "auto", marginBottom: 16 }}>
+              <table className="details-param-table" style={{ width: "100%" }}>
+                <thead>
+                  <tr>
+                    {["Type", "Holder", "Rate / Terms", "Metals", "Area", "Notes", ""].map(h => (
+                      <th key={h}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {royaltyList.map((r) => (
+                    <tr key={r.royalty_id}>
+                      <td style={{ whiteSpace: "nowrap", fontWeight: 600 }}>{r.royalty_type}</td>
+                      <td style={{ fontWeight: 500 }}>
+                        {r.holder}
+                        {r.buyback_option && <span style={{ display: "block", fontSize: 11, color: "var(--text-tertiary)", fontWeight: 400 }}>Buyback option{r.buyback_price_musd ? ` · $${r.buyback_price_musd}M` : ""}</span>}
+                      </td>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        {r.rate_pct != null ? `${r.rate_pct}%` : ""}
+                        {r.stream_pct != null ? `${r.stream_pct}% @ ${r.stream_purchase_price ?? "—"} ${r.stream_purchase_unit ?? ""}` : ""}
+                        {r.production_rate != null ? `${r.production_rate} ${r.production_unit ?? ""}/unit` : ""}
+                        {r.sliding_scale_notes ? <span style={{ display: "block", fontSize: 11, color: "var(--text-tertiary)" }}>{r.sliding_scale_notes}</span> : ""}
+                      </td>
+                      <td style={{ color: "var(--text-secondary)" }}>{r.metals_covered ?? "—"}</td>
+                      <td style={{ color: "var(--text-secondary)", fontSize: 12 }}>{r.area_covered ?? "—"}</td>
+                      <td style={{ color: "var(--text-secondary)", fontSize: 12, fontStyle: "italic" }}>{r.notes ?? r.recorded_instrument ?? "—"}</td>
+                      <td style={{ width: 32 }}>
+                        <button className="btn-icon-only" title="Remove" onClick={() => handleDeleteRoyalty(r.royalty_id)}><TrashIcon /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
+          ) : (
+            <p style={{ fontSize: 13.5, color: "var(--text-tertiary)", fontStyle: "italic", marginBottom: 16 }}>
+              No royalties or streams found in uploaded documents. Run an analysis to extract them automatically, or add one manually below.
+            </p>
           )}
 
-          {/* Add button */}
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
-            <button className="btn btn-primary btn-sm" onClick={() => setShowRoyaltyForm(v => !v)}>
-              {showRoyaltyForm ? "Cancel" : "+ Add Royalty / Stream"}
+          {/* Secondary: manual add */}
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowRoyaltyForm(v => !v)}>
+              {showRoyaltyForm ? "Cancel" : "+ Add / Correct Manually"}
             </button>
           </div>
-
-          {/* Add form */}
           {showRoyaltyForm && (
-            <form onSubmit={handleAddRoyalty} className="card" style={{ padding: "18px 20px", marginBottom: 18 }}>
-              <div style={{ fontWeight: 600, marginBottom: 14, fontSize: 14 }}>New Royalty or Stream Agreement</div>
+            <form onSubmit={handleAddRoyalty} style={{ marginTop: 14 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
                 <div>
                   <label className="form-label">Type *</label>
                   <select className="form-input" style={{ fontSize: 13 }} required
                     value={royaltyForm.royalty_type ?? "NSR"}
                     onChange={(e) => setRoyaltyForm(f => ({ ...f, royalty_type: e.target.value as Royalty["royalty_type"] }))}>
-                    {["NSR", "GR", "NPI", "Stream", "Sliding NSR", "Production", "Other"].map(t => (
-                      <option key={t}>{t}</option>
-                    ))}
+                    {["NSR", "GR", "NPI", "Stream", "Sliding NSR", "Production", "Other"].map(t => <option key={t}>{t}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="form-label">Holder *</label>
-                  <input className="form-input" style={{ fontSize: 13 }} required
-                    value={royaltyForm.holder ?? ""}
-                    onChange={(e) => setRoyaltyForm(f => ({ ...f, holder: e.target.value }))}
-                    placeholder="Franco-Nevada, Wheaton, etc." />
+                  <input className="form-input" style={{ fontSize: 13 }} required value={royaltyForm.holder ?? ""}
+                    onChange={(e) => setRoyaltyForm(f => ({ ...f, holder: e.target.value }))} placeholder="Franco-Nevada, Wheaton…" />
                 </div>
                 <div>
                   <label className="form-label">Metals Covered</label>
-                  <input className="form-input" style={{ fontSize: 13 }}
-                    value={royaltyForm.metals_covered ?? ""}
-                    onChange={(e) => setRoyaltyForm(f => ({ ...f, metals_covered: e.target.value || null }))}
-                    placeholder="Gold, Silver, All metals…" />
+                  <input className="form-input" style={{ fontSize: 13 }} value={royaltyForm.metals_covered ?? ""}
+                    onChange={(e) => setRoyaltyForm(f => ({ ...f, metals_covered: e.target.value || null }))} placeholder="Gold, Silver, All…" />
                 </div>
-
-                {/* NSR / GR / NPI / Sliding rate */}
                 {["NSR", "GR", "NPI", "Sliding NSR"].includes(royaltyForm.royalty_type ?? "NSR") && (
                   <div>
                     <label className="form-label">Rate (%)</label>
-                    <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.01" max="100"
+                    <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.01"
                       value={royaltyForm.rate_pct ?? ""}
-                      onChange={(e) => setRoyaltyForm(f => ({ ...f, rate_pct: e.target.value ? parseFloat(e.target.value) : null }))}
-                      placeholder="e.g. 2.0" />
+                      onChange={(e) => setRoyaltyForm(f => ({ ...f, rate_pct: e.target.value ? parseFloat(e.target.value) : null }))} placeholder="e.g. 2.0" />
                   </div>
                 )}
-
-                {/* Sliding scale detail */}
-                {royaltyForm.royalty_type === "Sliding NSR" && (
-                  <div style={{ gridColumn: "span 2" }}>
-                    <label className="form-label">Scale Detail</label>
-                    <input className="form-input" style={{ fontSize: 13 }}
-                      value={royaltyForm.sliding_scale_notes ?? ""}
-                      onChange={(e) => setRoyaltyForm(f => ({ ...f, sliding_scale_notes: e.target.value || null }))}
-                      placeholder="e.g. 1% below $1500, 1.5% at $1500–$2000, 2% above $2000" />
-                  </div>
-                )}
-
-                {/* Stream fields */}
                 {royaltyForm.royalty_type === "Stream" && (<>
-                  <div>
-                    <label className="form-label">Stream % of Production</label>
-                    <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.1" max="100"
-                      value={royaltyForm.stream_pct ?? ""}
-                      onChange={(e) => setRoyaltyForm(f => ({ ...f, stream_pct: e.target.value ? parseFloat(e.target.value) : null }))}
-                      placeholder="e.g. 20" />
-                  </div>
-                  <div>
-                    <label className="form-label">Purchase Price</label>
-                    <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.01"
-                      value={royaltyForm.stream_purchase_price ?? ""}
-                      onChange={(e) => setRoyaltyForm(f => ({ ...f, stream_purchase_price: e.target.value ? parseFloat(e.target.value) : null }))}
-                      placeholder="e.g. 400" />
-                  </div>
-                  <div>
-                    <label className="form-label">Purchase Unit</label>
-                    <input className="form-input" style={{ fontSize: 13 }}
-                      value={royaltyForm.stream_purchase_unit ?? ""}
-                      onChange={(e) => setRoyaltyForm(f => ({ ...f, stream_purchase_unit: e.target.value || null }))}
-                      placeholder="USD/oz, USD/lb…" />
-                  </div>
+                  <div><label className="form-label">Stream %</label>
+                    <input className="form-input" style={{ fontSize: 13 }} type="number" value={royaltyForm.stream_pct ?? ""}
+                      onChange={(e) => setRoyaltyForm(f => ({ ...f, stream_pct: e.target.value ? parseFloat(e.target.value) : null }))} placeholder="e.g. 20" /></div>
+                  <div><label className="form-label">Purchase Price</label>
+                    <input className="form-input" style={{ fontSize: 13 }} type="number" value={royaltyForm.stream_purchase_price ?? ""}
+                      onChange={(e) => setRoyaltyForm(f => ({ ...f, stream_purchase_price: e.target.value ? parseFloat(e.target.value) : null }))} placeholder="e.g. 400" /></div>
+                  <div><label className="form-label">Unit</label>
+                    <input className="form-input" style={{ fontSize: 13 }} value={royaltyForm.stream_purchase_unit ?? ""}
+                      onChange={(e) => setRoyaltyForm(f => ({ ...f, stream_purchase_unit: e.target.value || null }))} placeholder="USD/oz" /></div>
                 </>)}
-
-                {/* Production royalty */}
-                {royaltyForm.royalty_type === "Production" && (<>
-                  <div>
-                    <label className="form-label">Rate per Unit (USD)</label>
-                    <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.01"
-                      value={royaltyForm.production_rate ?? ""}
-                      onChange={(e) => setRoyaltyForm(f => ({ ...f, production_rate: e.target.value ? parseFloat(e.target.value) : null }))}
-                      placeholder="e.g. 10" />
-                  </div>
-                  <div>
-                    <label className="form-label">Unit</label>
-                    <input className="form-input" style={{ fontSize: 13 }}
-                      value={royaltyForm.production_unit ?? ""}
-                      onChange={(e) => setRoyaltyForm(f => ({ ...f, production_unit: e.target.value || null }))}
-                      placeholder="USD/oz, USD/t…" />
-                  </div>
-                </>)}
-
-                <div>
-                  <label className="form-label">Area Covered</label>
-                  <input className="form-input" style={{ fontSize: 13 }}
-                    value={royaltyForm.area_covered ?? ""}
-                    onChange={(e) => setRoyaltyForm(f => ({ ...f, area_covered: e.target.value || null }))}
-                    placeholder="All claims, Block A…" />
-                </div>
-                <div>
-                  <label className="form-label">Recorded Instrument</label>
-                  <input className="form-input" style={{ fontSize: 13 }}
-                    value={royaltyForm.recorded_instrument ?? ""}
-                    onChange={(e) => setRoyaltyForm(f => ({ ...f, recorded_instrument: e.target.value || null }))}
-                    placeholder="Title No. / Agreement ref." />
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 22 }}>
-                  <input type="checkbox" id="buyback-check"
-                    checked={royaltyForm.buyback_option ?? false}
-                    onChange={(e) => setRoyaltyForm(f => ({ ...f, buyback_option: e.target.checked }))} />
-                  <label htmlFor="buyback-check" style={{ fontSize: 13, cursor: "pointer" }}>Buyback option</label>
-                </div>
-                {royaltyForm.buyback_option && (
-                  <div>
-                    <label className="form-label">Buyback Price (M USD)</label>
-                    <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.1"
-                      value={royaltyForm.buyback_price_musd ?? ""}
-                      onChange={(e) => setRoyaltyForm(f => ({ ...f, buyback_price_musd: e.target.value ? parseFloat(e.target.value) : null }))}
-                      placeholder="e.g. 5.0" />
-                  </div>
-                )}
                 <div style={{ gridColumn: "span 3" }}>
                   <label className="form-label">Notes</label>
-                  <input className="form-input" style={{ fontSize: 13 }}
-                    value={royaltyForm.notes ?? ""}
-                    onChange={(e) => setRoyaltyForm(f => ({ ...f, notes: e.target.value || null }))}
-                    placeholder="Context, caveats, source document…" />
+                  <input className="form-input" style={{ fontSize: 13 }} value={royaltyForm.notes ?? ""}
+                    onChange={(e) => setRoyaltyForm(f => ({ ...f, notes: e.target.value || null }))} placeholder="Context, caveats, source…" />
                 </div>
               </div>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                 <button type="button" className="btn btn-secondary btn-sm"
-                  onClick={() => { setShowRoyaltyForm(false); setRoyaltyForm({ royalty_type: "NSR", buyback_option: false }); }}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary btn-sm"
-                  disabled={royaltyLoading || !royaltyForm.holder?.trim()}>
+                  onClick={() => { setShowRoyaltyForm(false); setRoyaltyForm({ royalty_type: "NSR", buyback_option: false }); }}>Cancel</button>
+                <button type="submit" className="btn btn-primary btn-sm" disabled={royaltyLoading || !royaltyForm.holder?.trim()}>
                   {royaltyLoading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : "Save"}
                 </button>
               </div>
             </form>
           )}
-
-          {/* Royalties list */}
-          {royaltyList.length === 0 && !showRoyaltyForm ? (
-            <div className="empty-state">
-              <h3>No royalties or streams recorded</h3>
-              <p>Add NSR, gross royalty, NPI, or streaming agreements to flag their impact on project economics</p>
-            </div>
-          ) : royaltyList.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {royaltyList.map((r) => {
-                const typeColor: Record<string, string> = {
-                  NSR: "#6366f1", GR: "#8b5cf6", NPI: "#ec4899",
-                  Stream: "#0891b2", "Sliding NSR": "#7c3aed",
-                  Production: "#059669", Other: "#6b7280",
-                };
-                const color = typeColor[r.royalty_type] ?? "#6b7280";
-                return (
-                  <div key={r.royalty_id} className="card" style={{ padding: "14px 16px", display: "flex", gap: 14, alignItems: "flex-start" }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                        <span style={{
-                          fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
-                          background: `${color}18`, color,
-                        }}>{r.royalty_type}</span>
-                        <span style={{ fontWeight: 600, fontSize: 14 }}>{r.holder}</span>
-                        {r.buyback_option && (
-                          <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 4, background: "rgba(34,197,94,0.1)", color: "#16a34a", fontWeight: 600 }}>
-                            Buyback option{r.buyback_price_musd ? ` $${r.buyback_price_musd}M` : ""}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px", fontSize: 13, color: "var(--text-secondary)" }}>
-                        {r.rate_pct != null && <span><strong>{r.rate_pct}%</strong> {r.royalty_type}</span>}
-                        {r.stream_pct != null && <span><strong>{r.stream_pct}%</strong> of production @ {r.stream_purchase_price} {r.stream_purchase_unit}</span>}
-                        {r.production_rate != null && <span><strong>{r.production_rate}</strong> {r.production_unit} / unit</span>}
-                        {r.metals_covered && <span>Metals: {r.metals_covered}</span>}
-                        {r.area_covered && <span>Area: {r.area_covered}</span>}
-                        {r.recorded_instrument && <span>Ref: {r.recorded_instrument}</span>}
-                      </div>
-                      {r.sliding_scale_notes && (
-                        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4, fontStyle: "italic" }}>{r.sliding_scale_notes}</div>
-                      )}
-                      {r.notes && (
-                        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4 }}>{r.notes}</div>
-                      )}
-                    </div>
-                    <button className="btn-icon-only" title="Remove" onClick={() => handleDeleteRoyalty(r.royalty_id)}>
-                      <TrashIcon />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
           </div>
 
           {/* Resources */}
           <div className="details-section">
-            <div className="details-section-heading">Resource Estimates</div>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 16 }}>
+              <div className="details-section-heading" style={{ marginBottom: 0 }}>Resource Estimates</div>
+              <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+                {resources.length > 0 ? `${resources.length} row${resources.length !== 1 ? "s" : ""} extracted from documents` : "Extracted from uploaded documents on analysis"}
+              </span>
+            </div>
+
           {/* Warnings */}
           {resourceSummary && resourceSummary.warnings.length > 0 && (
-            <ul style={{ margin: "0 0 20px", paddingLeft: 20, fontSize: 13.5, color: "var(--text-secondary)", lineHeight: 1.8 }}>
+            <ul style={{ margin: "0 0 16px", paddingLeft: 20, fontSize: 13.5, color: "var(--text-secondary)", lineHeight: 1.8 }}>
               {resourceSummary.warnings.map((w, i) => (
                 <li key={i}>
                   <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
@@ -1710,108 +1594,94 @@ export default function ProjectDetailPage() {
             </ul>
           )}
 
-          {/* Summary stats */}
-          {resourceSummary && resources.length > 0 && (
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
-              {[
-                { label: "Total Tonnage", value: resourceSummary.total_tonnage_mt != null ? `${resourceSummary.total_tonnage_mt.toLocaleString()} Mt` : "—" },
-                { label: "M+I Tonnage", value: resourceSummary.measured_mt != null || resourceSummary.indicated_mt != null
-                    ? `${((resourceSummary.measured_mt ?? 0) + (resourceSummary.indicated_mt ?? 0)).toLocaleString()} Mt` : "—" },
-                { label: "Inferred Tonnage", value: resourceSummary.inferred_mt != null ? `${resourceSummary.inferred_mt.toLocaleString()} Mt` : "—" },
-                { label: "Inferred %", value: resourceSummary.inferred_pct != null ? `${resourceSummary.inferred_pct}%` : "—" },
-                ...(resourceSummary.total_contained != null ? [{ label: `Total ${resourceSummary.metal_unit ?? "Metal"}`, value: String(resourceSummary.total_contained) }] : []),
-                ...(resourceSummary.measured_indicated_contained != null ? [{ label: `M+I ${resourceSummary.metal_unit ?? "Metal"}`, value: String(resourceSummary.measured_indicated_contained) }] : []),
-              ].map(({ label, value }) => (
-                <div key={label} className="card" style={{ padding: "10px 14px", minWidth: 110, textAlign: "center" }}>
-                  <div style={{ fontSize: 10, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>{label}</div>
-                  <div style={{
-                    fontSize: 18,
-                    fontWeight: 700,
-                    color: label === "Inferred %" && (resourceSummary.inferred_pct ?? 0) > 50 ? "#d97706" : "var(--text-primary)",
-                  }}>{value}</div>
-                </div>
-              ))}
+          {/* Resource table — primary display */}
+          {resources.length > 0 ? (
+            <div style={{ overflowX: "auto", marginBottom: 16 }}>
+              <table className="details-param-table" style={{ width: "100%" }}>
+                <thead>
+                  <tr>
+                    {["Classification", "Domain", "Tonnage (Mt)", "Grade", "Unit", "Cut-off", "Contained", "Metal Unit", ""].map((h) => (
+                      <th key={h}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {resources.map((row) => (
+                    <tr key={row.row_id}>
+                      <td style={{ fontWeight: 600 }}>{row.classification}</td>
+                      <td style={{ color: "var(--text-secondary)" }}>{row.domain ?? "—"}</td>
+                      <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{row.tonnage_mt != null ? row.tonnage_mt.toLocaleString() : "—"}</td>
+                      <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{row.grade_value != null ? row.grade_value : "—"}</td>
+                      <td style={{ color: "var(--text-secondary)" }}>{row.grade_unit ?? "—"}</td>
+                      <td style={{ color: "var(--text-secondary)", fontSize: 12 }}>{row.cut_off_grade ?? "—"}</td>
+                      <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 500 }}>{row.contained_metal != null ? row.contained_metal.toLocaleString() : "—"}</td>
+                      <td style={{ color: "var(--text-secondary)" }}>{row.metal_unit ?? "—"}</td>
+                      <td style={{ width: 32 }}>
+                        <button className="btn-icon-only" title="Remove row" onClick={() => handleDeleteResource(row.row_id)}><TrashIcon /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                {resources.length > 1 && resourceSummary && (
+                  <tfoot>
+                    <tr>
+                      <td colSpan={2} style={{ fontWeight: 700, fontSize: 12 }}>Total</td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>{resourceSummary.total_tonnage_mt != null ? resourceSummary.total_tonnage_mt.toLocaleString() : "—"}</td>
+                      <td colSpan={3} />
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>{resourceSummary.total_contained != null ? resourceSummary.total_contained.toLocaleString() : "—"}</td>
+                      <td colSpan={2} />
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
             </div>
+          ) : (
+            <p style={{ fontSize: 13.5, color: "var(--text-tertiary)", fontStyle: "italic", marginBottom: 16 }}>
+              No resource estimates found in uploaded documents. Run an analysis to extract them automatically, or add a row manually below.
+            </p>
           )}
 
-          {/* Add button */}
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
-            <button className="btn btn-primary btn-sm" onClick={() => setShowResForm((v) => !v)}>
-              {showResForm ? "Cancel" : "+ Add Row"}
+          {/* Secondary: manual add */}
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowResForm(v => !v)}>
+              {showResForm ? "Cancel" : "+ Add / Correct Row Manually"}
             </button>
           </div>
-
-          {/* Add form */}
           {showResForm && (
-            <form onSubmit={handleAddResource} className="card" style={{ padding: "18px 20px", marginBottom: 18 }}>
-              <div style={{ fontWeight: 600, marginBottom: 14, fontSize: 14 }}>Add Resource Row</div>
+            <form onSubmit={handleAddResource} style={{ marginTop: 14 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
                 <div>
                   <label className="form-label">Classification *</label>
                   <select className="form-input" style={{ fontSize: 13 }} required
                     value={resForm.classification ?? "Measured"}
                     onChange={(e) => setResForm((f) => ({ ...f, classification: e.target.value as ResourceRow["classification"] }))}>
-                    <option>Measured</option>
-                    <option>Indicated</option>
-                    <option>Inferred</option>
+                    <option>Measured</option><option>Indicated</option><option>Inferred</option>
                   </select>
                 </div>
-                <div>
-                  <label className="form-label">Domain</label>
-                  <input className="form-input" style={{ fontSize: 13 }}
-                    value={resForm.domain ?? ""}
-                    onChange={(e) => setResForm((f) => ({ ...f, domain: e.target.value || null }))}
-                    placeholder="oxide, sulphide, all…" />
-                </div>
-                <div>
-                  <label className="form-label">Tonnage (Mt)</label>
-                  <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.001"
-                    value={resForm.tonnage_mt ?? ""}
-                    onChange={(e) => setResForm((f) => ({ ...f, tonnage_mt: e.target.value ? parseFloat(e.target.value) : null }))}
-                    placeholder="e.g. 45.2" />
-                </div>
-                <div>
-                  <label className="form-label">Grade</label>
-                  <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.001"
-                    value={resForm.grade_value ?? ""}
-                    onChange={(e) => setResForm((f) => ({ ...f, grade_value: e.target.value ? parseFloat(e.target.value) : null }))}
-                    placeholder="e.g. 1.24" />
-                </div>
-                <div>
-                  <label className="form-label">Grade Unit</label>
-                  <input className="form-input" style={{ fontSize: 13 }}
-                    value={resForm.grade_unit ?? ""}
-                    onChange={(e) => setResForm((f) => ({ ...f, grade_unit: e.target.value || null }))}
-                    placeholder="g/t, %, ppm, lb/t…" />
-                </div>
-                <div>
-                  <label className="form-label">Cut-off Grade</label>
-                  <input className="form-input" style={{ fontSize: 13 }}
-                    value={resForm.cut_off_grade ?? ""}
-                    onChange={(e) => setResForm((f) => ({ ...f, cut_off_grade: e.target.value || null }))}
-                    placeholder="e.g. 0.3 g/t Au" />
-                </div>
-                <div>
-                  <label className="form-label">Contained Metal</label>
-                  <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.01"
-                    value={resForm.contained_metal ?? ""}
-                    onChange={(e) => setResForm((f) => ({ ...f, contained_metal: e.target.value ? parseFloat(e.target.value) : null }))}
-                    placeholder="e.g. 2.4" />
-                </div>
-                <div>
-                  <label className="form-label">Metal Unit</label>
-                  <input className="form-input" style={{ fontSize: 13 }}
-                    value={resForm.metal_unit ?? ""}
-                    onChange={(e) => setResForm((f) => ({ ...f, metal_unit: e.target.value || null }))}
-                    placeholder="Moz, Mlb, kt…" />
-                </div>
-                <div>
-                  <label className="form-label">Notes</label>
-                  <input className="form-input" style={{ fontSize: 13 }}
-                    value={resForm.notes ?? ""}
-                    onChange={(e) => setResForm((f) => ({ ...f, notes: e.target.value || null }))}
-                    placeholder="Optional" />
-                </div>
+                <div><label className="form-label">Domain</label>
+                  <input className="form-input" style={{ fontSize: 13 }} value={resForm.domain ?? ""}
+                    onChange={(e) => setResForm((f) => ({ ...f, domain: e.target.value || null }))} placeholder="oxide, sulphide…" /></div>
+                <div><label className="form-label">Tonnage (Mt)</label>
+                  <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.001" value={resForm.tonnage_mt ?? ""}
+                    onChange={(e) => setResForm((f) => ({ ...f, tonnage_mt: e.target.value ? parseFloat(e.target.value) : null }))} placeholder="e.g. 45.2" /></div>
+                <div><label className="form-label">Grade</label>
+                  <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.001" value={resForm.grade_value ?? ""}
+                    onChange={(e) => setResForm((f) => ({ ...f, grade_value: e.target.value ? parseFloat(e.target.value) : null }))} placeholder="e.g. 1.24" /></div>
+                <div><label className="form-label">Grade Unit</label>
+                  <input className="form-input" style={{ fontSize: 13 }} value={resForm.grade_unit ?? ""}
+                    onChange={(e) => setResForm((f) => ({ ...f, grade_unit: e.target.value || null }))} placeholder="g/t, %, ppm…" /></div>
+                <div><label className="form-label">Contained Metal</label>
+                  <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.01" value={resForm.contained_metal ?? ""}
+                    onChange={(e) => setResForm((f) => ({ ...f, contained_metal: e.target.value ? parseFloat(e.target.value) : null }))} placeholder="e.g. 2.4" /></div>
+                <div><label className="form-label">Metal Unit</label>
+                  <input className="form-input" style={{ fontSize: 13 }} value={resForm.metal_unit ?? ""}
+                    onChange={(e) => setResForm((f) => ({ ...f, metal_unit: e.target.value || null }))} placeholder="Moz, Mlb, kt…" /></div>
+                <div><label className="form-label">Cut-off Grade</label>
+                  <input className="form-input" style={{ fontSize: 13 }} value={resForm.cut_off_grade ?? ""}
+                    onChange={(e) => setResForm((f) => ({ ...f, cut_off_grade: e.target.value || null }))} placeholder="e.g. 0.3 g/t Au" /></div>
+                <div><label className="form-label">Notes</label>
+                  <input className="form-input" style={{ fontSize: 13 }} value={resForm.notes ?? ""}
+                    onChange={(e) => setResForm((f) => ({ ...f, notes: e.target.value || null }))} placeholder="Optional" /></div>
               </div>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setShowResForm(false); setResForm({ classification: "Measured" }); }}>Cancel</button>
@@ -1821,221 +1691,111 @@ export default function ProjectDetailPage() {
               </div>
             </form>
           )}
-
-          {/* Resource table */}
-          {resources.length === 0 && !showResForm ? (
-            <div className="empty-state">
-              <h3>No resource data yet</h3>
-              <p>Add Measured, Indicated, and Inferred rows to enable classification analysis and compliance warnings</p>
-            </div>
-          ) : resources.length > 0 ? (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                    {["Classification", "Domain", "Tonnage (Mt)", "Grade", "Unit", "Cut-off", "Contained", "Metal Unit", "Notes", ""].map((h) => (
-                      <th key={h} style={{ textAlign: "left", padding: "8px 10px", fontWeight: 600, fontSize: 11, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {resources.map((row) => {
-                    const classColor = row.classification === "Measured"
-                      ? { bg: "rgba(34,197,94,0.08)", text: "#15803d" }
-                      : row.classification === "Indicated"
-                      ? { bg: "rgba(59,130,246,0.08)", text: "#1d4ed8" }
-                      : { bg: "rgba(245,158,11,0.08)", text: "#b45309" };
-                    return (
-                      <tr key={row.row_id} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-                        <td style={{ padding: "10px 10px" }}>
-                          <span style={{
-                            display: "inline-block",
-                            padding: "2px 8px",
-                            borderRadius: 4,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            background: classColor.bg,
-                            color: classColor.text,
-                          }}>
-                            {row.classification}
-                          </span>
-                        </td>
-                        <td style={{ padding: "10px 10px", color: "var(--text-secondary)" }}>{row.domain ?? "—"}</td>
-                        <td style={{ padding: "10px 10px", color: "var(--text-primary)", fontWeight: 500, textAlign: "right" }}>
-                          {row.tonnage_mt != null ? row.tonnage_mt.toLocaleString() : "—"}
-                        </td>
-                        <td style={{ padding: "10px 10px", color: "var(--text-primary)", textAlign: "right" }}>
-                          {row.grade_value != null ? row.grade_value : "—"}
-                        </td>
-                        <td style={{ padding: "10px 10px", color: "var(--text-secondary)" }}>{row.grade_unit ?? "—"}</td>
-                        <td style={{ padding: "10px 10px", color: "var(--text-secondary)", fontSize: 12 }}>{row.cut_off_grade ?? "—"}</td>
-                        <td style={{ padding: "10px 10px", color: "var(--text-primary)", fontWeight: 500, textAlign: "right" }}>
-                          {row.contained_metal != null ? row.contained_metal.toLocaleString() : "—"}
-                        </td>
-                        <td style={{ padding: "10px 10px", color: "var(--text-secondary)" }}>{row.metal_unit ?? "—"}</td>
-                        <td style={{ padding: "10px 10px", color: "var(--text-secondary)", fontSize: 12, fontStyle: row.notes ? "italic" : "normal" }}>{row.notes ?? "—"}</td>
-                        <td style={{ padding: "10px 6px" }}>
-                          <button className="btn-icon-only" title="Remove row" onClick={() => handleDeleteResource(row.row_id)}>
-                            <TrashIcon />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                {resources.length > 1 && resourceSummary && (
-                  <tfoot>
-                    <tr style={{ borderTop: "2px solid var(--border)", background: "var(--surface-alt, var(--surface))" }}>
-                      <td colSpan={2} style={{ padding: "9px 10px", fontWeight: 700, fontSize: 12, color: "var(--text-secondary)" }}>Total</td>
-                      <td style={{ padding: "9px 10px", fontWeight: 700, textAlign: "right" }}>
-                        {resourceSummary.total_tonnage_mt != null ? resourceSummary.total_tonnage_mt.toLocaleString() : "—"}
-                      </td>
-                      <td colSpan={4} />
-                      <td style={{ padding: "9px 10px", fontWeight: 700, textAlign: "right" }}>
-                        {resourceSummary.total_contained != null ? resourceSummary.total_contained.toLocaleString() : "—"}
-                      </td>
-                      <td colSpan={2} />
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
-          ) : null}
           </div>
 
           {/* Comparable Transactions */}
           <div className="details-section">
-            <div className="details-section-heading">Comparable Transactions</div>
-          {/* Summary stats */}
-          {comps.length > 0 && (() => {
-            const withPrice = comps.filter((c) => c.price_per_unit_usd != null);
-            const avgPrice = withPrice.length
-              ? withPrice.reduce((s, c) => s + (c.price_per_unit_usd ?? 0), 0) / withPrice.length
-              : null;
-            const withValue = comps.filter((c) => c.transaction_value_musd != null);
-            const avgValue = withValue.length
-              ? withValue.reduce((s, c) => s + (c.transaction_value_musd ?? 0), 0) / withValue.length
-              : null;
-            return (
-              <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
-                <div className="card" style={{ flex: 1, padding: "12px 16px", textAlign: "center" }}>
-                  <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Transactions</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)" }}>{comps.length}</div>
-                </div>
-                {avgPrice != null && (
-                  <div className="card" style={{ flex: 1, padding: "12px 16px", textAlign: "center" }}>
-                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Avg $/unit</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)" }}>${avgPrice.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-                  </div>
-                )}
-                {avgValue != null && (
-                  <div className="card" style={{ flex: 1, padding: "12px 16px", textAlign: "center" }}>
-                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Avg Deal (M USD)</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)" }}>${avgValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}M</div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 16 }}>
+              <div className="details-section-heading" style={{ marginBottom: 0 }}>Comparable Transactions</div>
+              <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+                {comps.length > 0 ? `${comps.length} transaction${comps.length !== 1 ? "s" : ""} extracted from documents` : "Extracted from uploaded documents on analysis"}
+              </span>
+            </div>
 
-          {/* Add button */}
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => setShowCompForm((v) => !v)}
-            >
-              {showCompForm ? "Cancel" : "+ Add Comparable"}
+          {/* Comps table — primary display */}
+          {comps.length > 0 ? (
+            <div style={{ overflowX: "auto", marginBottom: 16 }}>
+              <table className="details-param-table" style={{ width: "100%" }}>
+                <thead>
+                  <tr>
+                    {["Project / Asset", "Commodity", "Date", "Stage", "Deal (M USD)", "Resource", "$/unit", "Jurisdiction", ""].map((h) => (
+                      <th key={h}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {comps.map((c) => (
+                    <tr key={c.comp_id}>
+                      <td style={{ fontWeight: 500 }}>
+                        {c.project_name}
+                        {(c.acquirer || c.seller) && (
+                          <span style={{ display: "block", fontSize: 11, color: "var(--text-tertiary)", fontWeight: 400 }}>
+                            {[c.acquirer, c.seller].filter(Boolean).join(" ← ")}
+                          </span>
+                        )}
+                        {c.notes && <span style={{ display: "block", fontSize: 11, color: "var(--text-tertiary)", fontStyle: "italic" }}>{c.notes}</span>}
+                      </td>
+                      <td style={{ color: "var(--text-secondary)" }}>{c.commodity ?? "—"}</td>
+                      <td style={{ color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{c.transaction_date ?? "—"}</td>
+                      <td style={{ color: "var(--text-secondary)" }}>{c.study_stage ?? "—"}</td>
+                      <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                        {c.transaction_value_musd != null ? `$${c.transaction_value_musd.toLocaleString()}M` : "—"}
+                      </td>
+                      <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                        {c.resource_moz_or_mlb != null ? `${c.resource_moz_or_mlb}M` : "—"}
+                      </td>
+                      <td style={{ textAlign: "right", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                        {c.price_per_unit_usd != null ? `$${c.price_per_unit_usd.toLocaleString()}` : "—"}
+                      </td>
+                      <td style={{ color: "var(--text-secondary)" }}>{c.jurisdiction ?? "—"}</td>
+                      <td style={{ width: 32 }}>
+                        <button className="btn-icon-only" title="Remove" onClick={() => handleDeleteComp(c.comp_id)}><TrashIcon /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p style={{ fontSize: 13.5, color: "var(--text-tertiary)", fontStyle: "italic", marginBottom: 16 }}>
+              No comparable transactions found in uploaded documents. Run an analysis to extract them automatically, or add one manually below.
+            </p>
+          )}
+
+          {/* Secondary: manual add */}
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowCompForm(v => !v)}>
+              {showCompForm ? "Cancel" : "+ Add / Correct Manually"}
             </button>
           </div>
-
-          {/* Add form */}
           {showCompForm && (
-            <form onSubmit={handleAddComp} className="card" style={{ padding: "18px 20px", marginBottom: 18 }}>
-              <div style={{ fontWeight: 600, marginBottom: 14, fontSize: 14 }}>New Comparable Transaction</div>
+            <form onSubmit={handleAddComp} style={{ marginTop: 14 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-                <div>
-                  <label className="form-label">Project / Asset Name *</label>
-                  <input className="form-input" style={{ fontSize: 13 }} required
-                    value={compForm.project_name ?? ""}
-                    onChange={(e) => setCompForm((f) => ({ ...f, project_name: e.target.value }))}
-                    placeholder="e.g. Snowline Raven Gold" />
-                </div>
-                <div>
-                  <label className="form-label">Commodity</label>
-                  <input className="form-input" style={{ fontSize: 13 }}
-                    value={compForm.commodity ?? ""}
-                    onChange={(e) => setCompForm((f) => ({ ...f, commodity: e.target.value }))}
-                    placeholder="Gold, Copper, Lithium…" />
-                </div>
-                <div>
-                  <label className="form-label">Acquirer</label>
-                  <input className="form-input" style={{ fontSize: 13 }}
-                    value={compForm.acquirer ?? ""}
-                    onChange={(e) => setCompForm((f) => ({ ...f, acquirer: e.target.value }))}
-                    placeholder="Buyer" />
-                </div>
-                <div>
-                  <label className="form-label">Seller</label>
-                  <input className="form-input" style={{ fontSize: 13 }}
-                    value={compForm.seller ?? ""}
-                    onChange={(e) => setCompForm((f) => ({ ...f, seller: e.target.value }))}
-                    placeholder="Vendor / target company" />
-                </div>
-                <div>
-                  <label className="form-label">Transaction Date</label>
-                  <input className="form-input" style={{ fontSize: 13 }}
-                    value={compForm.transaction_date ?? ""}
-                    onChange={(e) => setCompForm((f) => ({ ...f, transaction_date: e.target.value }))}
-                    placeholder="2024 or 2024-03" />
-                </div>
-                <div>
-                  <label className="form-label">Study Stage</label>
-                  <select className="form-input" style={{ fontSize: 13 }}
-                    value={compForm.study_stage ?? ""}
+                <div><label className="form-label">Project / Asset Name *</label>
+                  <input className="form-input" style={{ fontSize: 13 }} required value={compForm.project_name ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, project_name: e.target.value }))} placeholder="e.g. Snowline Raven Gold" /></div>
+                <div><label className="form-label">Commodity</label>
+                  <input className="form-input" style={{ fontSize: 13 }} value={compForm.commodity ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, commodity: e.target.value }))} placeholder="Gold, Copper…" /></div>
+                <div><label className="form-label">Acquirer</label>
+                  <input className="form-input" style={{ fontSize: 13 }} value={compForm.acquirer ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, acquirer: e.target.value }))} placeholder="Buyer" /></div>
+                <div><label className="form-label">Seller</label>
+                  <input className="form-input" style={{ fontSize: 13 }} value={compForm.seller ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, seller: e.target.value }))} placeholder="Vendor" /></div>
+                <div><label className="form-label">Date</label>
+                  <input className="form-input" style={{ fontSize: 13 }} value={compForm.transaction_date ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, transaction_date: e.target.value }))} placeholder="2024 or 2024-03" /></div>
+                <div><label className="form-label">Stage</label>
+                  <select className="form-input" style={{ fontSize: 13 }} value={compForm.study_stage ?? ""}
                     onChange={(e) => setCompForm((f) => ({ ...f, study_stage: e.target.value || null }))}>
-                    <option value="">—</option>
-                    <option>PEA</option>
-                    <option>PFS</option>
-                    <option>FS</option>
-                    <option>Producing</option>
-                    <option>Exploration</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="form-label">Deal Value (M USD)</label>
-                  <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.1"
-                    value={compForm.transaction_value_musd ?? ""}
-                    onChange={(e) => setCompForm((f) => ({ ...f, transaction_value_musd: e.target.value ? parseFloat(e.target.value) : null }))}
-                    placeholder="e.g. 450" />
-                </div>
-                <div>
-                  <label className="form-label">Resource (Moz or Mlb)</label>
-                  <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.01"
-                    value={compForm.resource_moz_or_mlb ?? ""}
-                    onChange={(e) => setCompForm((f) => ({ ...f, resource_moz_or_mlb: e.target.value ? parseFloat(e.target.value) : null }))}
-                    placeholder="Total M&I+Inf" />
-                </div>
-                <div>
-                  <label className="form-label">Implied $/oz or $/lb</label>
-                  <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.01"
-                    value={compForm.price_per_unit_usd ?? ""}
-                    onChange={(e) => setCompForm((f) => ({ ...f, price_per_unit_usd: e.target.value ? parseFloat(e.target.value) : null }))}
-                    placeholder="e.g. 85" />
-                </div>
-                <div>
-                  <label className="form-label">Jurisdiction</label>
-                  <input className="form-input" style={{ fontSize: 13 }}
-                    value={compForm.jurisdiction ?? ""}
-                    onChange={(e) => setCompForm((f) => ({ ...f, jurisdiction: e.target.value }))}
-                    placeholder="Canada, Australia…" />
-                </div>
-              </div>
-              <div style={{ marginBottom: 14 }}>
-                <label className="form-label">Notes</label>
-                <input className="form-input" style={{ fontSize: 13 }}
-                  value={compForm.notes ?? ""}
-                  onChange={(e) => setCompForm((f) => ({ ...f, notes: e.target.value }))}
-                  placeholder="Any context or caveats" />
+                    <option value="">—</option><option>PEA</option><option>PFS</option><option>FS</option><option>Producing</option><option>Exploration</option>
+                  </select></div>
+                <div><label className="form-label">Deal Value (M USD)</label>
+                  <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.1" value={compForm.transaction_value_musd ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, transaction_value_musd: e.target.value ? parseFloat(e.target.value) : null }))} placeholder="e.g. 450" /></div>
+                <div><label className="form-label">Resource (Moz/Mlb)</label>
+                  <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.01" value={compForm.resource_moz_or_mlb ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, resource_moz_or_mlb: e.target.value ? parseFloat(e.target.value) : null }))} placeholder="Total M+I+Inf" /></div>
+                <div><label className="form-label">Implied $/oz or $/lb</label>
+                  <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.01" value={compForm.price_per_unit_usd ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, price_per_unit_usd: e.target.value ? parseFloat(e.target.value) : null }))} placeholder="e.g. 85" /></div>
+                <div><label className="form-label">Jurisdiction</label>
+                  <input className="form-input" style={{ fontSize: 13 }} value={compForm.jurisdiction ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, jurisdiction: e.target.value }))} placeholder="Canada, Australia…" /></div>
+                <div style={{ gridColumn: "span 2" }}><label className="form-label">Notes</label>
+                  <input className="form-input" style={{ fontSize: 13 }} value={compForm.notes ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Any context or caveats" /></div>
               </div>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setShowCompForm(false); setCompForm({}); }}>Cancel</button>
@@ -2045,59 +1805,6 @@ export default function ProjectDetailPage() {
               </div>
             </form>
           )}
-
-          {/* Table */}
-          {comps.length === 0 && !showCompForm ? (
-            <div className="empty-state">
-              <h3>No comparables yet</h3>
-              <p>Add reference transactions to benchmark valuation metrics</p>
-            </div>
-          ) : comps.length > 0 ? (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                    {["Project / Asset", "Commodity", "Date", "Stage", "Deal (M USD)", "Resource", "$/unit", "Jurisdiction", ""].map((h) => (
-                      <th key={h} style={{ textAlign: "left", padding: "8px 10px", fontWeight: 600, fontSize: 11, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {comps.map((c) => (
-                    <tr key={c.comp_id} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-                      <td style={{ padding: "10px 10px", fontWeight: 500, color: "var(--text-primary)" }}>
-                        {c.project_name}
-                        {(c.acquirer || c.seller) && (
-                          <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
-                            {[c.acquirer, c.seller].filter(Boolean).join(" ← ")}
-                          </div>
-                        )}
-                        {c.notes && <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2, fontStyle: "italic" }}>{c.notes}</div>}
-                      </td>
-                      <td style={{ padding: "10px 10px", color: "var(--text-secondary)" }}>{c.commodity ?? "—"}</td>
-                      <td style={{ padding: "10px 10px", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{c.transaction_date ?? "—"}</td>
-                      <td style={{ padding: "10px 10px", color: "var(--text-secondary)" }}>{c.study_stage ?? "—"}</td>
-                      <td style={{ padding: "10px 10px", color: "var(--text-secondary)", textAlign: "right" }}>
-                        {c.transaction_value_musd != null ? `$${c.transaction_value_musd.toLocaleString()}M` : "—"}
-                      </td>
-                      <td style={{ padding: "10px 10px", color: "var(--text-secondary)", textAlign: "right" }}>
-                        {c.resource_moz_or_mlb != null ? `${c.resource_moz_or_mlb}M` : "—"}
-                      </td>
-                      <td style={{ padding: "10px 10px", fontWeight: 600, color: "var(--text-primary)", textAlign: "right" }}>
-                        {c.price_per_unit_usd != null ? `$${c.price_per_unit_usd.toLocaleString()}` : "—"}
-                      </td>
-                      <td style={{ padding: "10px 10px", color: "var(--text-secondary)" }}>{c.jurisdiction ?? "—"}</td>
-                      <td style={{ padding: "10px 6px" }}>
-                        <button className="btn-icon-only" title="Remove" onClick={() => handleDeleteComp(c.comp_id)}>
-                          <TrashIcon />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
           </div>
 
           {/* Run History */}
