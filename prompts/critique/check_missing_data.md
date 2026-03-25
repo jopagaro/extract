@@ -1,60 +1,59 @@
-# Task Prompt — Check Missing Data
+# Task Prompt — Data Gap Report
 
-Identify all material data gaps in the project dataset — information that is absent,
-incomplete, or of insufficient quality to support the conclusions drawn.
+You are reviewing source documents for a mining project technical study.
+Your job is to identify every material data gap — information that is absent,
+incomplete, or of insufficient quality to support the conclusions being drawn.
 
 ## Instructions
 
-- Work through every analytical domain: geology, mining, metallurgy, infrastructure, environment, economics
-- For each gap identified, state why it matters and what decision it affects
-- Distinguish between gaps that block advancement and gaps that introduce uncertainty
-- Do not flag trivial or administrative absences
+- Work through every analytical domain listed below
+- For each gap, explain why it matters and what decision it affects
+- Distinguish gaps that BLOCK advancement to the next study level from those that merely add uncertainty
+- Do not flag trivial or administrative absences — only material gaps
+- If a domain has no gaps, include it with gap_description: "No material gaps identified"
+- Base your assessment entirely on what IS and IS NOT present in the source documents
+- Do not assume data exists if it is not explicitly shown
 
-<!-- ✏️ EDIT: Add data gap categories specific to the study levels your firm typically evaluates.
-     e.g. "For a PEA, a missing hydrogeological study is a gap but not necessarily blocking.
-     For a FS, it is blocking." Specify your thresholds for what constitutes a material gap
-     vs. an acceptable uncertainty at each study level. -->
+## Urgency Definitions
+
+- `"critical"` — must be addressed before advancing to the next study level; blocks the study
+- `"important"` — should be addressed but does not block advancement; increases uncertainty
+- `"minor"` — would improve confidence but has limited impact on key conclusions
 
 ## Assessment Domains
 
-For each domain below, assess what data is present, partial, or absent:
+Assess each of the following domains:
 
-1. **Geological data** — drill spacing, lithological logging, structural data, geotechnical data
-2. **Resource estimate** — classification adequacy, estimation methodology, validation
-3. **Metallurgical testwork** — scale of testwork, variability samples, locked cycle tests
-4. **Mine planning** — design stage, geotechnical inputs, mine scheduling basis
-5. **Processing design** — flowsheet maturity, equipment selection, vendor quotes
-6. **Infrastructure** — power, water, roads, tailings, waste dumps — confirmed vs assumed
-7. **Environmental** — baseline studies, impact assessment, closure plan
-8. **Social and permitting** — consultation records, permit status, community agreements
-9. **Economic inputs** — cost estimate basis, price deck source, tax model basis
-10. **Financial model** — sensitivity analysis, scenario analysis, financing plan
-
-<!-- ✏️ EDIT: Add domain-specific data requirements for the commodity types you cover.
-     e.g. For gold heap leach: "Column leach tests at representative particle size."
-     For underground: "Geotechnical drilling for stope stability analysis." -->
+1. **Geological data** — drill hole spacing and density, lithological logging, structural data, geotechnical data, QA/QC protocols
+2. **Resource estimate** — classification basis (measured/indicated/inferred), estimation methodology, cut-off grade justification, validation
+3. **Metallurgical testwork** — scale and representativeness of testwork, recovery assumptions, variability samples
+4. **Mine planning** — design maturity, geotechnical inputs, mine scheduling, equipment selection basis
+5. **Processing design** — flowsheet maturity, equipment sizing basis, reagent consumption data
+6. **Infrastructure** — power source and cost, water supply, road access, tailings facility design, waste management
+7. **Environmental and permitting** — baseline environmental studies, impact assessment status, permit timeline, closure plan
+8. **Social and community** — community consultation records, IBA or similar agreements, social license status
+9. **Economic inputs** — cost estimate class, price deck source and justification, contingency basis
+10. **Financial model** — discount rate justification, tax model, sensitivity ranges, financing plan
 
 ## Output Format
+
+Return ONLY valid JSON matching this structure exactly:
 
 ```json
 {
   "data_gaps": [
     {
-      "domain": null,
-      "gap_description": null,
-      "impact_on_analysis": null,
-      "blocking_advancement": null,
-      "recommended_action": null,
-      "urgency": null
+      "domain": "Domain name",
+      "gap_description": "Plain-language description of what is missing or incomplete",
+      "impact_on_analysis": "What conclusion or calculation is affected and how",
+      "blocking_advancement": true,
+      "recommended_action": "What should be done to address this gap",
+      "urgency": "critical"
     }
   ],
-  "critical_gaps_count": null,
-  "overall_data_quality_comment": null
+  "critical_gaps_count": 0,
+  "important_gaps_count": 0,
+  "minor_gaps_count": 0,
+  "overall_data_quality_comment": "A single plain-language paragraph summarising the overall state of data completeness for this project at its current study stage."
 }
 ```
-
-## Urgency Values
-
-`"critical"` — must be addressed before advancing to the next study level
-`"important"` — should be addressed but does not block advancement
-`"minor"` — would improve confidence but has limited impact on conclusions

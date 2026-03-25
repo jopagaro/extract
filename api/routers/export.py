@@ -54,6 +54,7 @@ SECTION_TITLES = {
     "04_economics":           "Economics & Financial Analysis",
     "05_risks":               "Risks & Uncertainties",
     "06_dcf_model":           "DCF Financial Model",
+    "08_data_gaps":           "Data Gap Report",
     "00_data_sources":        "Appendix A — Source Documents",
     "project_facts":          "Project Facts",
     "geology_summary":        "Geology",
@@ -326,6 +327,7 @@ _PDF_SECTION_ORDER = [
     "04_economics",
     "05_risks",
     "06_dcf_model",
+    "08_data_gaps",
     "00_data_sources",
     "01_project_facts",
 ]
@@ -337,6 +339,7 @@ _PDF_SECTION_META: dict[str, dict] = {
     "04_economics":           {"title": "Economics & Financial Analysis",  "subtitle": "Capital costs, operating costs, projections", "num": "2"},
     "05_risks":               {"title": "Risks & Uncertainties",           "subtitle": "Material risks and mitigations",              "num": "3"},
     "06_dcf_model":           {"title": "DCF Financial Model",             "subtitle": "Discounted cash flow analysis",               "num": "4"},
+    "08_data_gaps":           {"title": "Data Gap Report",                 "subtitle": "Material information gaps and recommended actions", "num": None},
     "00_data_sources":        {"title": "Appendix A — Source Documents",   "subtitle": None,                                          "num": None},
     "01_project_facts":       {"title": "Project Facts",                   "subtitle": None,                                          "num": None},
 }
@@ -648,6 +651,80 @@ def _generate_pdf(project_id: str, run_id: str, sections: dict) -> bytes:
                     shown += 1
                 except Exception:
                     pass
+
+        # ── Data Gap Report ───────────────────────────────────────────────
+        elif section_key == "08_data_gaps" and isinstance(content, dict):
+            overall = content.get("overall_data_quality_comment")
+            if isinstance(overall, str):
+                _prose(pdf, overall)
+                pdf.ln(2)
+                _rule(pdf)
+                pdf.ln(6)
+
+            # Summary counts
+            counts = []
+            crit = content.get("critical_gaps_count")
+            imp  = content.get("important_gaps_count")
+            minor = content.get("minor_gaps_count")
+            if crit is not None: counts.append(f"{crit} critical")
+            if imp  is not None: counts.append(f"{imp} important")
+            if minor is not None: counts.append(f"{minor} minor")
+            if counts:
+                _label(pdf, "Gap summary")
+                pdf.ln(2)
+                pdf.set_font("Helvetica", "", 10)
+                pdf.set_text_color(*_INK_SOFT)
+                pdf.cell(0, 6, _safe("  ·  ".join(counts)), ln=True)
+                pdf.ln(5)
+
+            gaps = content.get("data_gaps", [])
+            if isinstance(gaps, list) and gaps:
+                _label(pdf, f"Identified gaps ({len(gaps)})")
+                pdf.ln(4)
+                for gap in gaps:
+                    if not isinstance(gap, dict): continue
+                    if pdf.get_y() > 250: pdf.add_page()
+
+                    urgency = str(gap.get("urgency", "")).lower()
+                    domain  = str(gap.get("domain", ""))
+                    desc    = str(gap.get("gap_description", ""))
+                    impact  = str(gap.get("impact_on_analysis", ""))
+                    action  = str(gap.get("recommended_action", ""))
+                    blocking = gap.get("blocking_advancement", False)
+
+                    # Domain label with urgency tag inline
+                    tag = {"critical": "[CRITICAL]", "important": "[IMPORTANT]", "minor": "[MINOR]"}.get(urgency, "")
+                    pdf.set_font("Helvetica", "B", 10)
+                    pdf.set_text_color(*_INK)
+                    pdf.write(6, _safe(domain))
+                    if tag:
+                        pdf.set_font("Helvetica", "", 8.5)
+                        pdf.set_text_color(*_GRAY)
+                        pdf.write(6, f"  {tag}")
+                        if blocking:
+                            pdf.write(6, "  [blocks advancement]")
+                    pdf.ln(6)
+
+                    if desc and desc != "No material gaps identified":
+                        pdf.set_font("Helvetica", "", 10)
+                        pdf.set_text_color(*_INK)
+                        pdf.multi_cell(_PW, 5.8, _safe(desc))
+                        pdf.ln(2)
+
+                    if impact:
+                        pdf.set_font("Helvetica", "I", 9.5)
+                        pdf.set_text_color(*_INK_SOFT)
+                        pdf.multi_cell(_PW, 5.5, _safe(f"Impact: {impact}"))
+                        pdf.ln(1)
+
+                    if action:
+                        pdf.set_font("Helvetica", "", 9.5)
+                        pdf.set_text_color(*_INK_SOFT)
+                        pdf.multi_cell(_PW, 5.5, _safe(f"Action: {action}"))
+
+                    pdf.ln(5)
+                    _rule(pdf)
+                    pdf.ln(5)
 
         # ── Generic sections (geology, economics, risk, project facts) ────
         else:

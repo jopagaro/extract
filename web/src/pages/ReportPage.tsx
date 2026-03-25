@@ -287,6 +287,101 @@ function DcfSection({ data }: { data: Record<string, unknown> }) {
   );
 }
 
+// ── Data Gap Section ─────────────────────────────────────────────────────────
+
+type DataGap = {
+  domain: string;
+  gap_description: string;
+  impact_on_analysis: string;
+  blocking_advancement: boolean;
+  recommended_action: string;
+  urgency: "critical" | "important" | "minor";
+};
+
+function DataGapSection({ data }: { data: Record<string, unknown> }) {
+  const gaps = (data.data_gaps as DataGap[]) ?? [];
+  const overall = data.overall_data_quality_comment as string | undefined;
+  const critical = data.critical_gaps_count as number | undefined;
+  const important = data.important_gaps_count as number | undefined;
+  const minor = data.minor_gaps_count as number | undefined;
+
+  const urgencyStyle: Record<string, React.CSSProperties> = {
+    critical: { color: "var(--danger)", fontWeight: 600 },
+    important: { color: "var(--warning)", fontWeight: 600 },
+    minor:    { color: "var(--text-tertiary)", fontWeight: 500 },
+  };
+
+  return (
+    <div className="report-specialist-body">
+      {overall && (
+        <p style={{ marginBottom: 20, lineHeight: 1.7 }}>{overall}</p>
+      )}
+
+      {/* Summary counts */}
+      {(critical != null || important != null || minor != null) && (
+        <div style={{ display: "flex", gap: 20, marginBottom: 24, paddingBottom: 16, borderBottom: "1px solid var(--border)" }}>
+          {critical != null && (
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "var(--danger)" }}>{critical}</div>
+              <div style={{ fontSize: 12, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Critical</div>
+            </div>
+          )}
+          {important != null && (
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "var(--warning)" }}>{important}</div>
+              <div style={{ fontSize: 12, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Important</div>
+            </div>
+          )}
+          {minor != null && (
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-secondary)" }}>{minor}</div>
+              <div style={{ fontSize: 12, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Minor</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Gap list */}
+      {gaps.map((gap, i) => (
+        <div key={i} style={{
+          paddingBottom: 20,
+          marginBottom: 20,
+          borderBottom: i < gaps.length - 1 ? "1px solid var(--border)" : "none",
+        }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 6 }}>
+            <span style={{ fontWeight: 600, fontSize: 14 }}>{gap.domain}</span>
+            <span style={{ fontSize: 12, ...urgencyStyle[gap.urgency] }}>
+              {gap.urgency?.toUpperCase()}
+            </span>
+            {gap.blocking_advancement && (
+              <span style={{ fontSize: 11, color: "var(--danger)", background: "var(--danger-light)", padding: "1px 7px", borderRadius: 4 }}>
+                blocks advancement
+              </span>
+            )}
+          </div>
+          {gap.gap_description && gap.gap_description !== "No material gaps identified" && (
+            <p style={{ margin: "0 0 6px", fontSize: 14, lineHeight: 1.6 }}>{gap.gap_description}</p>
+          )}
+          {gap.impact_on_analysis && (
+            <p style={{ margin: "0 0 4px", fontSize: 13, color: "var(--text-secondary)", fontStyle: "italic" }}>
+              Impact: {gap.impact_on_analysis}
+            </p>
+          )}
+          {gap.recommended_action && (
+            <p style={{ margin: 0, fontSize: 13, color: "var(--text-secondary)" }}>
+              Action: {gap.recommended_action}
+            </p>
+          )}
+        </div>
+      ))}
+
+      {gaps.length === 0 && (
+        <p style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>No data gaps identified.</p>
+      )}
+    </div>
+  );
+}
+
 function ImageGallery({
   projectId,
   imageFiles,
@@ -371,6 +466,7 @@ const SECTION_CONFIG: Record<string, {
   "04_economics":       { title: "Economics & Financial Analysis", subtitle: "Capital costs, operating costs, and financial projections", layer: "detail", number: "2" },
   "05_risks":           { title: "Risks & Uncertainties", subtitle: "Material risks and mitigations", layer: "detail", number: "3" },
   "06_dcf_model":       { title: "DCF Financial Model", subtitle: "Computed discounted cash flow analysis", layer: "detail", number: "4" },
+  "08_data_gaps":       { title: "Data Gap Report", subtitle: "Material information gaps and recommended actions", layer: "detail", number: "5" },
   "00_data_sources":    { title: "Appendix A — Source Documents", subtitle: "All documents used in this analysis", layer: "appendix" },
   "01_project_facts":   { title: "Project Facts", layer: "hidden" },
   "02_executive_summary": { title: "Executive Summary", layer: "hidden" }, // legacy — replaced by assembly
@@ -497,6 +593,9 @@ export default function ReportPage() {
     }
     if (key === "07_assembly") {
       return <NarrativeSection assembly={content as Record<string, unknown>} />;
+    }
+    if (key === "08_data_gaps") {
+      return <DataGapSection data={content as Record<string, unknown>} />;
     }
     if (typeof content === "object" && content !== null && !Array.isArray(content)) {
       return <SpecialistSection data={content as Record<string, unknown>} />;

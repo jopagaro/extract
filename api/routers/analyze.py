@@ -320,6 +320,7 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
         from engine.llm.reporting.write_geology_section import write_geology_section
         from engine.llm.reporting.write_economics_section import write_economics_section
         from engine.llm.reporting.write_risk_section import write_risk_section
+        from engine.llm.critique.flag_missing_data import flag_missing_data
 
         dcf_context = (
             "COMPUTED DCF MODEL:\n" + json.dumps(dcf_output, indent=2)
@@ -327,23 +328,26 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
             else None
         )
 
-        async def _write_sections() -> tuple[dict, dict, dict]:
-            geology, economics, risks = await asyncio.gather(
+        async def _write_sections() -> tuple[dict, dict, dict, dict]:
+            geology, economics, risks, gaps_resp = await asyncio.gather(
                 write_geology_section(combined, run_id=run_id),
                 write_economics_section(combined, run_id=run_id, extra_context=dcf_context),
                 write_risk_section(combined, run_id=run_id),
+                flag_missing_data(combined, run_id=run_id),
             )
             return (
                 _extract_response_data(geology),
                 _extract_response_data(economics),
                 _extract_response_data(risks),
+                _extract_response_data(gaps_resp),
             )
 
-        geology, economics, risks = asyncio.run(_write_sections())
+        geology, economics, risks, data_gaps = asyncio.run(_write_sections())
 
         _save_section(project_id, run_id, "03_geology", geology)
         _save_section(project_id, run_id, "04_economics", economics)
         _save_section(project_id, run_id, "05_risks", risks)
+        _save_section(project_id, run_id, "08_data_gaps", data_gaps)
 
         # ── Step 4: Assemble narrative synthesis ────────────────────────────
         update("Writing analyst narrative")
