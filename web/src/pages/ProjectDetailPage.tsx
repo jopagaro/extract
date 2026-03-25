@@ -65,6 +65,7 @@ import {
   deleteRun,
   getProject,
   getRun,
+  ingestUrl,
   listFiles,
   listRuns,
   renameProject,
@@ -241,6 +242,8 @@ export default function ProjectDetailPage() {
   const [runs, setRuns] = useState<RunStatus[]>([]);
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
+  const [urlLoading, setUrlLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"files" | "runs">("files");
   const [showRename, setShowRename] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -297,6 +300,24 @@ export default function ProjectDetailPage() {
       toast((err as Error).message ?? "Upload failed", "error");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleUrlIngest(e: React.FormEvent) {
+    e.preventDefault();
+    const url = urlInput.trim();
+    if (!url) return;
+    setUrlLoading(true);
+    try {
+      const result = await ingestUrl(id, url);
+      toast(`Imported "${result.filename}" from URL`, "success");
+      setUrlInput("");
+      const updated = await listFiles(id);
+      setFiles(updated);
+    } catch (err: unknown) {
+      toast((err as Error).message ?? "Failed to import URL", "error");
+    } finally {
+      setUrlLoading(false);
     }
   }
 
@@ -467,6 +488,37 @@ export default function ProjectDetailPage() {
       {activeTab === "files" && (
         <>
           <DropZone onFiles={handleUpload} disabled={uploading} />
+
+          {/* URL import row */}
+          <form onSubmit={handleUrlIngest} style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <div style={{ position: "relative", flex: 1 }}>
+              <span style={{
+                position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)",
+                color: "var(--text-tertiary)", pointerEvents: "none", display: "flex",
+              }}>
+                <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </span>
+              <input
+                className="form-input"
+                type="url"
+                placeholder="Import from URL — paste a press release, article or filing…"
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                disabled={urlLoading}
+                style={{ paddingLeft: 32, fontSize: 13 }}
+              />
+            </div>
+            <button
+              type="submit"
+              className="btn btn-secondary btn-sm"
+              disabled={urlLoading || !urlInput.trim()}
+              style={{ whiteSpace: "nowrap" }}
+            >
+              {urlLoading ? <><span className="spinner" style={{ width: 12, height: 12 }} /> Fetching…</> : "Import"}
+            </button>
+          </form>
 
           {uploading && (
             <div style={{ textAlign: "center", padding: "16px 0", color: "var(--text-secondary)", fontSize: 13 }}>

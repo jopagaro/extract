@@ -92,6 +92,16 @@ export async function deleteFile(projectId: string, filename: string): Promise<v
   });
 }
 
+export async function ingestUrl(
+  projectId: string,
+  url: string,
+): Promise<{ filename: string; url: string; size_bytes: number; status: string }> {
+  return request(`/projects/${projectId}/ingest/url`, {
+    method: "POST",
+    body: JSON.stringify({ url }),
+  });
+}
+
 // ── Analysis ────────────────────────────────────────────────────────────────
 
 export async function startAnalysis(projectId: string): Promise<RunStatus> {
