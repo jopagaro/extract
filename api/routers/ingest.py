@@ -236,3 +236,233 @@ def ingest_url(project_id: str, body: UrlIngestRequest) -> UrlIngestResponse:
         size_bytes=size,
         status="queued",
     )
+
+
+# ---------------------------------------------------------------------------
+# EDGAR / SEDAR import — separate router (prefix: /edgar or /projects/{id})
+# ---------------------------------------------------------------------------
+
+edgar_router = APIRouter(tags=["filing-import"])
+
+
+class EdgarCompany(BaseModel):
+    cik: str
+    name: str
+    ticker: str
+    exchange: str
+
+
+class EdgarFiling(BaseModel):
+    accession_number: str
+    form_type: str
+    filing_date: str
+    report_date: str
+    primary_document: str
+    primary_doc_description: str
+    filing_url: str
+    index_url: str
+    cik: str
+
+
+class EdgarDocument(BaseModel):
+    filename: str
+    description: str
+    document_type: str
+    size_bytes: int
+    url: str
+
+
+class FilingImportRequest(BaseModel):
+    url: str
+    filename: str | None = None   # override auto-detected name
+    source: str = "edgar"          # "edgar" | "sedar"
+
+
+class FilingImportResponse(BaseModel):
+    project_id: str
+    filename: str
+    url: str
+    size_bytes: int
+    source: str
+    status: str
+    error: str | None = None
+
+
+@edgar_router.get("/edgar/search")
+def edgar_search(q: str, limit: int = 10) -> dict:
+    """
+    Search for companies on SEC EDGAR by name or ticker.
+    Returns a list of matching companies with CIK numbers.
+    """
+    from engine.ingest.edgar_client import search_companies
+    try:
+        results = search_companies(q.strip(), max_results=min(limit, 25))
+        return {"query": q, "results": results, "total": len(results)}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"EDGAR search failed: {exc}")
+
+
+@edgar_router.get("/edgar/filings")
+def edgar_filings(
+    cik: str,
+    forms: str = "40-F,10-K,20-F,6-K,8-K",
+    limit: int = 20,
+    after: str | None = None,
+) -> dict:
+    """
+    List filings for a given CIK.
+    forms: comma-separated form types (default: 40-F,10-K,20-F,6-K,8-K)
+    after: only return filings after this date (YYYY-MM-DD)
+    """
+    from engine.ingest.edgar_client import list_filings, get_company_facts
+    form_list = [f.strip() for f in forms.split(",") if f.strip()]
+    try:
+        filings = list_filings(cik, form_types=form_list, max_results=min(limit, 50), after_date=after)
+        facts = {}
+        try:
+            facts = get_company_facts(cik)
+        except Exception:
+            pass
+        return {
+            "cik": cik,
+            "company": facts.get("name", ""),
+            "ticker": facts.get("tickers", [""])[0] if facts.get("tickers") else "",
+            "filings": filings,
+            "total": len(filings),
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@edgar_router.get("/edgar/filings/{cik}/{accession}/documents")
+def edgar_filing_documents(cik: str, accession: str) -> dict:
+    """List all documents inside a specific EDGAR filing."""
+    from engine.ingest.edgar_client import get_filing_index
+    try:
+        docs = get_filing_index(cik, accession)
+        return {
+            "cik": cik,
+            "accession_number": accession,
+            "documents": docs,
+            "total": len(docs),
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@edgar_router.post("/projects/{project_id}/files/import-filing", response_model=FilingImportResponse, status_code=202)
+def import_filing_document(project_id: str, body: FilingImportRequest) -> FilingImportResponse:
+    """
+    Download a document from EDGAR or SEDAR+ and save it into the project's
+    raw/documents folder.
+
+    Accepts:
+    - Any EDGAR document URL (www.sec.gov/Archives/...)
+    - Any SEDAR+ document URL (sedarplus.ca/...)
+    """
+    _project_exists(project_id)
+    dest_dir = project_root(project_id) / "raw" / "documents"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    url = body.url.strip()
+    source = body.source
+
+    # Determine source from URL if not explicitly given
+    from engine.ingest.sedar_client import is_sedar_url
+    if is_sedar_url(url):
+        source = "sedar"
+    elif "sec.gov" in url.lower():
+        source = "edgar"
+
+    try:
+        if source == "sedar":
+            from engine.ingest.sedar_client import fetch_sedar_document
+            raw_bytes, auto_name = fetch_sedar_document(url)
+        else:
+            from engine.ingest.edgar_client import download_edgar_document
+            raw_bytes = download_edgar_document(url)
+            # Infer filename from URL
+            path_part = url.split("?")[0].rsplit("/", 1)[-1]
+            auto_name = path_part or "edgar_document.pdf"
+
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Download failed: {exc}")
+
+    # Use caller-supplied name or auto-detected
+    filename = body.filename or auto_name
+    filename = Path(filename).name   # strip any path components
+
+    # Validate extension
+    suffix = Path(filename).suffix.lower()
+    if suffix not in ALLOWED_EXTENSIONS and suffix not in {".html", ".htm"}:
+        # Accept HTML from EDGAR even though it's not in the standard list
+        if suffix not in {".html", ".htm"}:
+            # Re-derive from content
+            if raw_bytes[:4] == b"%PDF":
+                filename = Path(filename).stem + ".pdf"
+            elif raw_bytes[:2] in (b"PK", ):
+                filename = Path(filename).stem + ".xlsx"
+
+    # Dedup filename
+    dest_file = dest_dir / filename
+    if dest_file.exists():
+        stem = Path(filename).stem
+        ext  = Path(filename).suffix
+        counter = 2
+        while dest_file.exists():
+            dest_file = dest_dir / f"{stem}_{counter}{ext}"
+            counter += 1
+        filename = dest_file.name
+
+    dest_file.write_bytes(raw_bytes)
+    size = len(raw_bytes)
+
+    registry = _load_registry(project_id)
+    registry[filename] = {
+        "filename":    filename,
+        "path":        str(dest_file),
+        "size_bytes":  size,
+        "mime_type":   _mime_for(filename),
+        "source_url":  url,
+        "source":      source,
+        "ingested":    False,
+        "ingested_at": None,
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _save_registry(project_id, registry)
+
+    return FilingImportResponse(
+        project_id=project_id,
+        filename=filename,
+        url=url,
+        size_bytes=size,
+        source=source,
+        status="queued",
+    )
+
+
+@edgar_router.get("/sedar/search-link")
+def sedar_search_link(company: str, form_type: str | None = None) -> dict:
+    """
+    Return a SEDAR+ search deep-link URL for the given company name.
+    SEDAR+ has no public API — this provides a URL to open manually.
+    """
+    from engine.ingest.sedar_client import get_sedar_search_url
+    url = get_sedar_search_url(company, form_type)
+    return {
+        "company": company,
+        "form_type": form_type,
+        "search_url": url,
+        "note": (
+            "SEDAR+ does not provide a public API. "
+            "Open this URL in your browser to find filings, "
+            "then paste the document download URL into the import field."
+        ),
+    }
+
+
+def _mime_for(filename: str) -> str:
+    import mimetypes
+    return mimetypes.guess_type(filename)[0] or "application/octet-stream"

@@ -180,6 +180,24 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
 
         facts_str = json.dumps(facts, indent=2)
 
+        # ── Step 2.1: Jurisdiction risk lookup (non-fatal, synchronous) ─────
+        juris_data: dict = {}
+        try:
+            from engine.market.jurisdiction_risk import detect_jurisdiction, get_jurisdiction_risk
+            detected_jurisdiction = detect_jurisdiction(facts)
+            if detected_jurisdiction:
+                juris_risk = get_jurisdiction_risk(detected_jurisdiction)
+                juris_data = juris_risk if juris_risk else {
+                    "not_found": True,
+                    "query": detected_jurisdiction,
+                    "reason": f"No profile found for '{detected_jurisdiction}'",
+                }
+            else:
+                juris_data = {"not_found": True, "reason": "Jurisdiction not found in project facts"}
+            _save_section(project_id, run_id, "12_jurisdiction_risk", juris_data)
+        except Exception:
+            pass  # non-fatal — don't block the pipeline
+
         # ── Step 2.5: Gather market intelligence (live prices + web search) ─
         update("Gathering market intelligence")
 
@@ -321,6 +339,8 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
         from engine.llm.reporting.write_economics_section import write_economics_section
         from engine.llm.reporting.write_risk_section import write_risk_section
         from engine.llm.critique.flag_missing_data import flag_missing_data
+        from engine.llm.critique.flag_contradictions import flag_contradictions
+        from engine.llm.critique.check_compliance import check_compliance
         from engine.llm.scoring.assess_confidence import assess_confidence
 
         dcf_context = (
@@ -329,13 +349,18 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
             else None
         )
 
-        async def _write_sections() -> tuple[dict, dict, dict, dict, dict]:
-            geology, economics, risks, gaps_resp, confidence_resp = await asyncio.gather(
+        async def _write_sections() -> tuple[dict, dict, dict, dict, dict, dict, dict]:
+            (
+                geology, economics, risks,
+                gaps_resp, confidence_resp, contradictions_resp, compliance_resp,
+            ) = await asyncio.gather(
                 write_geology_section(combined, run_id=run_id),
                 write_economics_section(combined, run_id=run_id, extra_context=dcf_context),
                 write_risk_section(combined, run_id=run_id),
                 flag_missing_data(combined, run_id=run_id),
                 assess_confidence(combined, run_id=run_id),
+                flag_contradictions(combined, run_id=run_id, extra_context=dcf_context),
+                check_compliance(combined, run_id=run_id),
             )
             return (
                 _extract_response_data(geology),
@@ -343,15 +368,19 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
                 _extract_response_data(risks),
                 _extract_response_data(gaps_resp),
                 _extract_response_data(confidence_resp),
+                _extract_response_data(contradictions_resp),
+                _extract_response_data(compliance_resp),
             )
 
-        geology, economics, risks, data_gaps, confidence = asyncio.run(_write_sections())
+        geology, economics, risks, data_gaps, confidence, contradictions, compliance = asyncio.run(_write_sections())
 
         _save_section(project_id, run_id, "03_geology", geology)
         _save_section(project_id, run_id, "04_economics", economics)
         _save_section(project_id, run_id, "05_risks", risks)
         _save_section(project_id, run_id, "08_data_gaps", data_gaps)
         _save_section(project_id, run_id, "09_confidence", confidence)
+        _save_section(project_id, run_id, "10_contradictions", contradictions)
+        _save_section(project_id, run_id, "13_compliance", compliance)
 
         # ── Step 4: Assemble narrative synthesis ────────────────────────────
         update("Writing analyst narrative")
@@ -373,6 +402,42 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
 
         assembly = asyncio.run(_assemble())
         _save_section(project_id, run_id, "07_assembly", assembly)
+
+        # ── Step 4.5: Extract source citations ──────────────────────────────
+        update("Extracting source citations")
+
+        from engine.llm.extraction.extract_citations import extract_citations
+
+        # Build a compact summary of what the report actually claimed
+        report_sections_for_citation = json.dumps({
+            "03_geology":   geology,
+            "04_economics": economics,
+            "05_risks":     risks,
+            "06_dcf_model": dcf_output,
+            "07_assembly":  assembly,
+        }, indent=2)[:8000]  # cap to avoid token overflow
+
+        citations_data: dict = {}
+        try:
+            async def _cite() -> dict:
+                r = await extract_citations(
+                    truncated,  # source documents with [Source: filename] labels
+                    run_id=run_id,
+                    report_sections=report_sections_for_citation,
+                )
+                return _extract_response_data(r)
+
+            citations_data = asyncio.run(_cite())
+        except Exception as cite_exc:
+            citations_data = {
+                "citations": [],
+                "total_citations": 0,
+                "not_found_count": 0,
+                "citation_coverage_comment": f"Citation extraction failed: {cite_exc}",
+                "uncited_sections": [],
+            }
+
+        _save_section(project_id, run_id, "11_citations", citations_data)
 
         # ── Step 5: Save data sources notice ───────────────────────────────
         update("Finalising report")
@@ -398,6 +463,10 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
                 "risks": bool(risks),
                 "dcf_model_ran": bool(dcf_output and dcf_output.get("model_ran")),
                 "narrative_assembled": bool(assembly),
+                "contradictions_checked": bool(contradictions),
+                "citations_extracted": bool(citations_data and citations_data.get("citations")),
+                "jurisdiction_risk": bool(juris_data and not juris_data.get("not_found")),
+                "compliance_checked": bool(compliance and compliance.get("overall_status")),
             }
         }
         _save_section(project_id, run_id, "00_data_sources", sources_notice)

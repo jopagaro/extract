@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { createProject, listProjects } from "../api/client";
 import { useToast } from "../components/shared/Toast";
 import type { Project, ProjectCreate } from "../types";
@@ -144,6 +144,7 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     listProjects()
@@ -164,9 +165,20 @@ export default function ProjectsPage() {
           <h2>Projects</h2>
           <p>Each project is one mining asset — upload documents and run analysis</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-          <PlusIcon /> New Project
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          {projects.length >= 2 && (
+            <button
+              className="btn btn-secondary"
+              onClick={() => navigate("/portfolio/compare")}
+              title="Compare all projects side by side"
+            >
+              Compare Portfolio
+            </button>
+          )}
+          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+            <PlusIcon /> New Project
+          </button>
+        </div>
       </div>
 
       {loading ? (

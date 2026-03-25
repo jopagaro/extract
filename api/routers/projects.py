@@ -17,7 +17,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from api.models.project import ProjectCreate, ProjectList, ProjectResponse
+from api.models.project import ProjectCreate, ProjectList, ProjectResponse, ProjectUpdate
 from engine.core.paths import get_projects_root, project_metadata_file, project_root
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -63,6 +63,7 @@ def _build_response(project_id: str, meta: dict) -> ProjectResponse:
         description=meta.get("description"),
         commodity=meta.get("commodity"),
         study_type=meta.get("study_type", "PEA"),
+        ticker=meta.get("ticker"),
         created_at=meta.get("created_at", ""),
         status=meta.get("status", "empty"),
         file_count=file_count,
@@ -134,15 +135,18 @@ def get_project(project_id: str) -> ProjectResponse:
 
 
 @router.patch("/{project_id}", response_model=ProjectResponse)
-def rename_project(project_id: str, body: dict) -> ProjectResponse:
-    """Update the display name of a project."""
+def update_project(project_id: str, body: ProjectUpdate) -> ProjectResponse:
+    """Update project name and/or ticker symbol."""
     meta = _load_metadata(project_id)
     if not meta:
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
-    name = (body.get("name") or "").strip()
-    if not name:
-        raise HTTPException(status_code=422, detail="Name cannot be empty")
-    meta["name"] = name
+    if body.name is not None:
+        name = body.name.strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="Name cannot be empty")
+        meta["name"] = name
+    if body.ticker is not None:
+        meta["ticker"] = body.ticker.upper().strip() or None
     _save_metadata(project_id, meta)
     return _build_response(project_id, meta)
 

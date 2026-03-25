@@ -61,20 +61,50 @@ function AnalysisPills({ run }: { run: { step?: string; status: string } }) {
 }
 import {
   archiveProject,
+  createComparable,
+  createNote,
+  createResource,
+  createRoyalty,
+  deleteComparable,
   deleteFile,
+  deleteNote,
+  deleteResource,
+  deleteRoyalty,
   deleteRun,
   getProject,
+  getDrillholes,
+  uploadDrillholeFile,
+  deleteDrillholes,
+  edgarSearchCompanies,
+  edgarListFilings,
+  edgarListDocuments,
+  importFilingDocument,
+  getSedarSearchLink,
+  getProjectJurisdictionRisk,
+  getProjectNews,
   getRun,
+  getResourceSummary,
+  getRoyaltySummary,
   ingestUrl,
+  listComparables,
   listFiles,
+  listNotes,
+  listResources,
+  listRoyalties,
   listRuns,
+  refreshProjectNews,
   renameProject,
+  patchProject,
+  runSanityCheck,
   startAnalysis,
+  updateNote,
   uploadFiles,
+  type SanityResult,
 } from "../api/client";
 import DropZone from "../components/shared/DropZone";
 import { useToast } from "../components/shared/Toast";
-import type { FileRecord, Project, RunStatus } from "../types";
+import type { DrillholeDataset, TracePoint, EdgarCompany, EdgarFiling, EdgarDocument, JurisdictionRisk } from "../api/client";
+import type { Comparable, FileRecord, NewsFeed, NewsItem, Note, Project, ResourceRow, ResourceSummary, Royalty, RoyaltySummary, RunStatus } from "../types";
 
 // ── Icons ──────────────────────────────────────────────────────────────────
 
@@ -244,7 +274,56 @@ export default function ProjectDetailPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<"files" | "runs">("files");
+  // EDGAR / SEDAR import panel
+  const [filingPanelOpen, setFilingPanelOpen] = useState(false);
+  const [filingTab, setFilingTab] = useState<"edgar" | "sedar">("edgar");
+  const [edgarQuery, setEdgarQuery] = useState("");
+  const [edgarSearching, setEdgarSearching] = useState(false);
+  const [edgarCompanies, setEdgarCompanies] = useState<EdgarCompany[]>([]);
+  const [edgarSelectedCompany, setEdgarSelectedCompany] = useState<EdgarCompany | null>(null);
+  const [edgarFilings, setEdgarFilings] = useState<EdgarFiling[]>([]);
+  const [edgarFilingsLoading, setEdgarFilingsLoading] = useState(false);
+  const [edgarSelectedFiling, setEdgarSelectedFiling] = useState<EdgarFiling | null>(null);
+  const [edgarDocuments, setEdgarDocuments] = useState<EdgarDocument[]>([]);
+  const [edgarDocsLoading, setEdgarDocsLoading] = useState(false);
+  const [filingImporting, setFilingImporting] = useState<string | null>(null); // doc url being imported
+  const [filingImportMsg, setFilingImportMsg] = useState<string | null>(null);
+  const [sedarUrl, setSedarUrl] = useState("");
+  const [sedarImporting, setSedarImporting] = useState(false);
+  // Drill holes
+  const [dhDataset, setDhDataset] = useState<DrillholeDataset | null>(null);
+  const [dhLoading, setDhLoading] = useState(false);
+  const [dhUploading, setDhUploading] = useState(false);
+  const [dhSelectedHole, setDhSelectedHole] = useState<string | null>(null);
+  const [dhAnalyte, setDhAnalyte] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<"files" | "details" | "notes">("files");
+  const [ticker, setTicker] = useState<string>("");
+  const [sanity, setSanity] = useState<SanityResult | null>(null);
+  const [sanityLoading, setSanityLoading] = useState(false);
+  const [jurisdictionRisk, setJurisdictionRisk] = useState<JurisdictionRisk | null>(null);
+  const [newsFeed, setNewsFeed] = useState<NewsFeed | null>(null);
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [newsRefreshing, setNewsRefreshing] = useState(false);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [noteText, setNoteText] = useState("");
+  const [noteTag, setNoteTag] = useState("");
+  const [noteLoading, setNoteLoading] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState("");
+  const [comps, setComps] = useState<Comparable[]>([]);
+  const [showCompForm, setShowCompForm] = useState(false);
+  const [compLoading, setCompLoading] = useState(false);
+  const [compForm, setCompForm] = useState<Partial<Comparable>>({});
+  const [resources, setResources] = useState<ResourceRow[]>([]);
+  const [resourceSummary, setResourceSummary] = useState<ResourceSummary | null>(null);
+  const [showResForm, setShowResForm] = useState(false);
+  const [resLoading, setResLoading] = useState(false);
+  const [resForm, setResForm] = useState<Partial<ResourceRow>>({ classification: "Measured" });
+  const [royaltyList, setRoyaltyList] = useState<Royalty[]>([]);
+  const [royaltySummary, setRoyaltySummary] = useState<RoyaltySummary | null>(null);
+  const [showRoyaltyForm, setShowRoyaltyForm] = useState(false);
+  const [royaltyLoading, setRoyaltyLoading] = useState(false);
+  const [royaltyForm, setRoyaltyForm] = useState<Partial<Royalty>>({ royalty_type: "NSR", buyback_option: false });
   const [showRename, setShowRename] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -255,10 +334,23 @@ export default function ProjectDetailPage() {
       getProject(id),
       listFiles(id),
       listRuns(id),
-    ]).then(([p, f, r]) => {
+      listNotes(id),
+      listComparables(id),
+      listResources(id),
+      getResourceSummary(id),
+      listRoyalties(id),
+      getRoyaltySummary(id),
+    ]).then(([p, f, r, n, c, res, resSummary, roy, roySummary]) => {
       setProject(p);
+      setTicker(p.ticker ?? "");
       setFiles(f);
       setRuns(r);
+      setNotes(n);
+      setComps(c);
+      setResources(res);
+      setResourceSummary(resSummary);
+      setRoyaltyList(roy);
+      setRoyaltySummary(roySummary);
     }).catch(() => {
       toast("Could not load project", "error");
     });
@@ -321,6 +413,127 @@ export default function ProjectDetailPage() {
     }
   }
 
+  // ── EDGAR / SEDAR handlers ────────────────────────────────────────────────
+
+  async function handleEdgarSearch() {
+    if (!edgarQuery.trim()) return;
+    setEdgarSearching(true);
+    setEdgarCompanies([]);
+    setEdgarSelectedCompany(null);
+    setEdgarFilings([]);
+    try {
+      const res = await edgarSearchCompanies(edgarQuery.trim());
+      setEdgarCompanies(res.results);
+      if (res.results.length === 0) toast("No companies found on EDGAR for that query", "error");
+    } catch {
+      toast("EDGAR search failed — check your connection", "error");
+    } finally {
+      setEdgarSearching(false);
+    }
+  }
+
+  async function handleEdgarSelectCompany(company: EdgarCompany) {
+    setEdgarSelectedCompany(company);
+    setEdgarFilings([]);
+    setEdgarSelectedFiling(null);
+    setEdgarDocuments([]);
+    setFilingImportMsg(null);
+    // Auto-save ticker from the selected company
+    if (company.ticker) {
+      setTicker(company.ticker);
+      handleSaveTicker(company.ticker);
+    }
+    setEdgarFilingsLoading(true);
+    try {
+      const res = await edgarListFilings(company.cik);
+      setEdgarFilings(res.filings);
+    } catch {
+      toast("Failed to load EDGAR filings", "error");
+    } finally {
+      setEdgarFilingsLoading(false);
+    }
+  }
+
+  async function handleEdgarSelectFiling(filing: EdgarFiling) {
+    setEdgarSelectedFiling(filing);
+    setEdgarDocuments([]);
+    setFilingImportMsg(null);
+    setEdgarDocsLoading(true);
+    try {
+      const res = await edgarListDocuments(filing.cik, filing.accession_number);
+      setEdgarDocuments(res.documents);
+    } catch {
+      toast("Failed to load filing documents", "error");
+    } finally {
+      setEdgarDocsLoading(false);
+    }
+  }
+
+  async function handleImportEdgarDoc(doc: EdgarDocument) {
+    setFilingImporting(doc.url);
+    setFilingImportMsg(null);
+    try {
+      const res = await importFilingDocument(id, doc.url, doc.filename, "edgar");
+      setFilingImportMsg(`✓ Imported "${res.filename}" (${Math.round(res.size_bytes / 1024)}KB)`);
+      const updated = await listFiles(id);
+      setFiles(updated);
+    } catch (err: unknown) {
+      setFilingImportMsg(`Failed: ${(err as Error).message ?? "Unknown error"}`);
+    } finally {
+      setFilingImporting(null);
+    }
+  }
+
+  async function handleImportSedar() {
+    const url = sedarUrl.trim();
+    if (!url) return;
+    setSedarImporting(true);
+    setFilingImportMsg(null);
+    try {
+      const res = await importFilingDocument(id, url, undefined, "sedar");
+      setFilingImportMsg(`✓ Imported "${res.filename}" (${Math.round(res.size_bytes / 1024)}KB)`);
+      setSedarUrl("");
+      const updated = await listFiles(id);
+      setFiles(updated);
+    } catch (err: unknown) {
+      setFilingImportMsg(`Failed: ${(err as Error).message ?? "Unknown error"}`);
+    } finally {
+      setSedarImporting(false);
+    }
+  }
+
+  // ── Drill hole handlers ───────────────────────────────────────────────────
+
+  async function handleDhUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setDhUploading(true);
+    try {
+      const result = await uploadDrillholeFile(id, file);
+      toast(`Imported ${result.table_type}: ${result.row_count} rows, ${result.hole_count} holes`, "success");
+      const updated = await getDrillholes(id);
+      setDhDataset(updated);
+      if (!dhAnalyte && updated.analytes.length) setDhAnalyte(updated.analytes[0]);
+    } catch (err: unknown) {
+      toast((err as Error).message ?? "Upload failed", "error");
+    } finally {
+      setDhUploading(false);
+      e.target.value = "";
+    }
+  }
+
+  async function handleDhClear() {
+    if (!confirm("Delete all drill hole data for this project?")) return;
+    try {
+      await deleteDrillholes(id);
+      setDhDataset(null);
+      setDhSelectedHole(null);
+      toast("Drill hole data cleared", "success");
+    } catch {
+      toast("Failed to clear drill hole data", "error");
+    }
+  }
+
   async function handleDeleteFile(filename: string) {
     try {
       await deleteFile(id, filename);
@@ -353,6 +566,184 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function handleAddNote(e: React.FormEvent) {
+    e.preventDefault();
+    if (!noteText.trim()) return;
+    setNoteLoading(true);
+    try {
+      const note = await createNote(id, noteText.trim(), noteTag.trim() || undefined);
+      setNotes((prev) => [note, ...prev]);
+      setNoteText("");
+      setNoteTag("");
+      toast("Note saved", "success");
+    } catch {
+      toast("Failed to save note", "error");
+    } finally {
+      setNoteLoading(false);
+    }
+  }
+
+  async function handleSaveEdit(noteId: string) {
+    if (!editingText.trim()) return;
+    try {
+      const updated = await updateNote(id, noteId, editingText.trim());
+      setNotes((prev) => prev.map((n) => n.note_id === noteId ? updated : n));
+      setEditingNoteId(null);
+      setEditingText("");
+    } catch {
+      toast("Failed to update note", "error");
+    }
+  }
+
+  async function handleDeleteNote(noteId: string) {
+    try {
+      await deleteNote(id, noteId);
+      setNotes((prev) => prev.filter((n) => n.note_id !== noteId));
+      toast("Note deleted", "info");
+    } catch {
+      toast("Failed to delete note", "error");
+    }
+  }
+
+  async function handleAddResource(e: React.FormEvent) {
+    e.preventDefault();
+    if (!resForm.classification) return;
+    setResLoading(true);
+    try {
+      const row = await createResource(id, {
+        classification: resForm.classification as ResourceRow["classification"],
+        domain: resForm.domain ?? null,
+        tonnage_mt: resForm.tonnage_mt ?? null,
+        grade_value: resForm.grade_value ?? null,
+        grade_unit: resForm.grade_unit ?? null,
+        contained_metal: resForm.contained_metal ?? null,
+        metal_unit: resForm.metal_unit ?? null,
+        cut_off_grade: resForm.cut_off_grade ?? null,
+        notes: resForm.notes ?? null,
+      });
+      const [newRows, newSummary] = await Promise.all([listResources(id), getResourceSummary(id)]);
+      setResources(newRows);
+      setResourceSummary(newSummary);
+      setResForm({ classification: "Measured" });
+      setShowResForm(false);
+      toast("Resource row added", "success");
+    } catch {
+      toast("Failed to add resource row", "error");
+    } finally {
+      setResLoading(false);
+    }
+  }
+
+  async function handleDeleteResource(rowId: string) {
+    try {
+      await deleteResource(id, rowId);
+      const [newRows, newSummary] = await Promise.all([listResources(id), getResourceSummary(id)]);
+      setResources(newRows);
+      setResourceSummary(newSummary);
+      toast("Row removed", "info");
+    } catch {
+      toast("Failed to remove row", "error");
+    }
+  }
+
+  async function handleRunSanityCheck() {
+    setSanityLoading(true);
+    try {
+      const result = await runSanityCheck(id);
+      setSanity(result);
+    } catch {
+      toast("Sanity check failed", "error");
+    } finally {
+      setSanityLoading(false);
+    }
+  }
+
+  async function handleAddRoyalty(e: React.FormEvent) {
+    e.preventDefault();
+    if (!royaltyForm.holder?.trim()) return;
+    setRoyaltyLoading(true);
+    try {
+      await createRoyalty(id, {
+        royalty_type: (royaltyForm.royalty_type ?? "NSR") as Royalty["royalty_type"],
+        holder: royaltyForm.holder ?? "",
+        rate_pct: royaltyForm.rate_pct ?? null,
+        metals_covered: royaltyForm.metals_covered ?? null,
+        area_covered: royaltyForm.area_covered ?? null,
+        stream_pct: royaltyForm.stream_pct ?? null,
+        stream_purchase_price: royaltyForm.stream_purchase_price ?? null,
+        stream_purchase_unit: royaltyForm.stream_purchase_unit ?? null,
+        sliding_scale_notes: royaltyForm.sliding_scale_notes ?? null,
+        production_rate: royaltyForm.production_rate ?? null,
+        production_unit: royaltyForm.production_unit ?? null,
+        buyback_option: royaltyForm.buyback_option ?? false,
+        buyback_price_musd: royaltyForm.buyback_price_musd ?? null,
+        recorded_instrument: royaltyForm.recorded_instrument ?? null,
+        notes: royaltyForm.notes ?? null,
+      });
+      const [newList, newSummary] = await Promise.all([listRoyalties(id), getRoyaltySummary(id)]);
+      setRoyaltyList(newList);
+      setRoyaltySummary(newSummary);
+      setRoyaltyForm({ royalty_type: "NSR", buyback_option: false });
+      setShowRoyaltyForm(false);
+      toast("Royalty / stream added", "success");
+    } catch {
+      toast("Failed to add royalty", "error");
+    } finally {
+      setRoyaltyLoading(false);
+    }
+  }
+
+  async function handleDeleteRoyalty(royaltyId: string) {
+    try {
+      await deleteRoyalty(id, royaltyId);
+      const [newList, newSummary] = await Promise.all([listRoyalties(id), getRoyaltySummary(id)]);
+      setRoyaltyList(newList);
+      setRoyaltySummary(newSummary);
+      toast("Removed", "info");
+    } catch {
+      toast("Failed to remove royalty", "error");
+    }
+  }
+
+  async function handleAddComp(e: React.FormEvent) {
+    e.preventDefault();
+    if (!compForm.project_name?.trim()) return;
+    setCompLoading(true);
+    try {
+      const comp = await createComparable(id, {
+        project_name: compForm.project_name ?? "",
+        acquirer: compForm.acquirer ?? null,
+        seller: compForm.seller ?? null,
+        commodity: compForm.commodity ?? null,
+        transaction_date: compForm.transaction_date ?? null,
+        transaction_value_musd: compForm.transaction_value_musd ?? null,
+        resource_moz_or_mlb: compForm.resource_moz_or_mlb ?? null,
+        price_per_unit_usd: compForm.price_per_unit_usd ?? null,
+        study_stage: compForm.study_stage ?? null,
+        jurisdiction: compForm.jurisdiction ?? null,
+        notes: compForm.notes ?? null,
+      });
+      setComps((prev) => [comp, ...prev]);
+      setCompForm({});
+      setShowCompForm(false);
+      toast("Comparable added", "success");
+    } catch {
+      toast("Failed to add comparable", "error");
+    } finally {
+      setCompLoading(false);
+    }
+  }
+
+  async function handleDeleteComp(compId: string) {
+    try {
+      await deleteComparable(id, compId);
+      setComps((prev) => prev.filter((c) => c.comp_id !== compId));
+      toast("Comparable removed", "info");
+    } catch {
+      toast("Failed to remove comparable", "error");
+    }
+  }
+
   async function handleArchive() {
     if (!window.confirm(`Archive "${project?.name}"? It will be moved to the _archive folder and hidden from your projects list.`)) return;
     try {
@@ -361,6 +752,17 @@ export default function ProjectDetailPage() {
       navigate("/projects");
     } catch {
       toast("Failed to archive project", "error");
+    }
+  }
+
+  async function handleSaveTicker(value: string) {
+    const t = value.toUpperCase().trim().slice(0, 12);
+    setTicker(t);
+    try {
+      const updated = await patchProject(id, { ticker: t || null });
+      setProject(updated);
+    } catch {
+      // non-critical, ignore
     }
   }
 
@@ -373,7 +775,7 @@ export default function ProjectDetailPage() {
     try {
       const run = await startAnalysis(id);
       setRuns((prev) => [run, ...prev]);
-      setActiveTab("runs");
+      setActiveTab("details");
       startPolling(run.run_id);
       toast("Analysis started — this may take 1–3 minutes", "info");
     } catch (err: unknown) {
@@ -395,27 +797,24 @@ export default function ProjectDetailPage() {
 
   return (
     <>
-      {/* Breadcrumb */}
-      <div className="breadcrumb">
-        <Link to="/projects">Projects</Link>
-        <span className="breadcrumb-sep">/</span>
-        <span>{project.name}</span>
-      </div>
-
       {/* Header */}
-      <div className="page-header">
-        <div>
-          <h2>{project.name}</h2>
-          <p>
-            {project.commodity && <span>{project.commodity} · </span>}
-            {project.study_type}
-            {project.description && <span> · {project.description}</span>}
-          </p>
+      <div className="project-header">
+        <div className="project-header-left">
+          <div className="project-title-row">
+            <h1 className="project-title">{project.name}</h1>
+            <span className="badge badge-empty">{project.study_type}</span>
+          </div>
+          <div className="project-meta-row">
+            {project.commodity && <span className="project-meta-chip">{project.commodity}</span>}
+            <span className="project-meta-chip" style={{ color: "var(--text-tertiary)" }}>
+              {files.length} files · {runs.length} runs
+            </span>
+          </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="project-header-right">
           <ProjectMenu onRename={() => setShowRename(true)} onArchive={handleArchive} />
           <button
-            className="btn btn-primary btn-lg"
+            className="btn btn-primary"
             onClick={handleRunAnalysis}
             disabled={analyzing || files.length === 0}
           >
@@ -477,10 +876,28 @@ export default function ProjectDetailPage() {
       {/* Tabs */}
       <div className="tabs">
         <button className={`tab ${activeTab === "files" ? "active" : ""}`} onClick={() => setActiveTab("files")}>
-          Files ({files.length})
+          Files {files.length > 0 ? `(${files.length})` : ""}
         </button>
-        <button className={`tab ${activeTab === "runs" ? "active" : ""}`} onClick={() => setActiveTab("runs")}>
-          Runs ({runs.length})
+        <button
+          className={`tab ${activeTab === "details" ? "active" : ""}`}
+          onClick={() => {
+            setActiveTab("details");
+            if (!sanity) handleRunSanityCheck();
+            if (!jurisdictionRisk) getProjectJurisdictionRisk(id).then(r => setJurisdictionRisk(r)).catch(() => {});
+            if (!newsFeed && !newsLoading) {
+              setNewsLoading(true);
+              getProjectNews(id).then(setNewsFeed).catch(() => {}).finally(() => setNewsLoading(false));
+            }
+            if (!dhDataset && !dhLoading) {
+              setDhLoading(true);
+              getDrillholes(id).then(d => { setDhDataset(d); if (d.analytes.length) setDhAnalyte(d.analytes[0]); }).catch(() => {}).finally(() => setDhLoading(false));
+            }
+          }}
+        >
+          Details
+        </button>
+        <button className={`tab ${activeTab === "notes" ? "active" : ""}`} onClick={() => setActiveTab("notes")}>
+          Notes {notes.length > 0 ? `(${notes.length})` : ""}
         </button>
       </div>
 
@@ -520,6 +937,209 @@ export default function ProjectDetailPage() {
             </button>
           </form>
 
+          {/* EDGAR / SEDAR import panel */}
+          <div style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={() => setFilingPanelOpen(v => !v)}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                background: "none", border: "none", cursor: "pointer",
+                fontSize: 12, color: "var(--text-tertiary)", padding: "4px 0",
+              }}
+            >
+              <span style={{ fontSize: 15, transform: filingPanelOpen ? "rotate(90deg)" : "none", display: "inline-block", transition: "transform 0.15s" }}>▶</span>
+              Import from EDGAR or SEDAR+
+            </button>
+
+            {filingPanelOpen && (
+              <div style={{
+                marginTop: 8, border: "1px solid var(--border)", borderRadius: 8,
+                background: "var(--bg-secondary)", overflow: "hidden",
+              }}>
+                {/* Tab bar */}
+                <div style={{ display: "flex", borderBottom: "1px solid var(--border)" }}>
+                  {(["edgar", "sedar"] as const).map(t => (
+                    <button key={t} onClick={() => setFilingTab(t)} style={{
+                      flex: 1, padding: "8px 0", fontSize: 12, fontWeight: 600,
+                      background: filingTab === t ? "var(--bg-primary)" : "none",
+                      border: "none", cursor: "pointer",
+                      borderBottom: filingTab === t ? "2px solid var(--color-accent)" : "2px solid transparent",
+                      color: filingTab === t ? "var(--text-primary)" : "var(--text-tertiary)",
+                    }}>
+                      {t === "edgar" ? "SEC EDGAR" : "SEDAR+"}
+                    </button>
+                  ))}
+                </div>
+
+                <div style={{ padding: "14px 16px" }}>
+                  {filingTab === "edgar" && (
+                    <>
+                      {/* Step 1: Search company */}
+                      {!edgarSelectedCompany && (
+                        <>
+                          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 }}>
+                            Search for a company on SEC EDGAR to browse their filings (40-F, 10-K, 20-F, 6-K).
+                          </div>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <input
+                              className="form-input"
+                              style={{ flex: 1, fontSize: 13 }}
+                              placeholder="Company name or ticker (e.g. Barrick, GOLD)"
+                              value={edgarQuery}
+                              onChange={e => setEdgarQuery(e.target.value)}
+                              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleEdgarSearch(); } }}
+                            />
+                            <button className="btn btn-secondary btn-sm" disabled={edgarSearching || !edgarQuery.trim()} onClick={handleEdgarSearch}>
+                              {edgarSearching ? <><span className="spinner" style={{ width: 12, height: 12 }} /> Searching…</> : "Search"}
+                            </button>
+                          </div>
+                          {edgarCompanies.length > 0 && (
+                            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 4 }}>
+                              {edgarCompanies.map(c => (
+                                <button key={c.cik} onClick={() => handleEdgarSelectCompany(c)} style={{
+                                  display: "flex", alignItems: "center", gap: 10,
+                                  padding: "7px 10px", background: "var(--bg-primary)",
+                                  border: "1px solid var(--border)", borderRadius: 6,
+                                  cursor: "pointer", textAlign: "left",
+                                }}>
+                                  <span style={{ fontWeight: 600, fontSize: 13, flex: 1 }}>{c.name}</span>
+                                  {c.ticker && <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontFamily: "monospace" }}>{c.ticker}</span>}
+                                  {c.exchange && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{c.exchange}</span>}
+                                  <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>CIK {c.cik}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {/* Step 2: Browse filings */}
+                      {edgarSelectedCompany && !edgarSelectedFiling && (
+                        <>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                            <div>
+                              <span style={{ fontWeight: 700, fontSize: 13 }}>{edgarSelectedCompany.name}</span>
+                              {edgarSelectedCompany.ticker && <span style={{ fontSize: 11, color: "var(--text-tertiary)", marginLeft: 8 }}>{edgarSelectedCompany.ticker}</span>}
+                            </div>
+                            <button className="btn btn-secondary btn-sm" onClick={() => { setEdgarSelectedCompany(null); setEdgarFilings([]); setEdgarCompanies([]); }}>
+                              ← Back
+                            </button>
+                          </div>
+                          {edgarFilingsLoading && <div style={{ fontSize: 13, color: "var(--text-tertiary)" }}><span className="spinner" style={{ width: 12, height: 12 }} /> Loading filings…</div>}
+                          {!edgarFilingsLoading && edgarFilings.length === 0 && (
+                            <div style={{ fontSize: 13, color: "var(--text-tertiary)" }}>No 40-F / 10-K / 20-F / 6-K filings found.</div>
+                          )}
+                          {edgarFilings.map(f => (
+                            <button key={f.accession_number} onClick={() => handleEdgarSelectFiling(f)} style={{
+                              display: "flex", alignItems: "center", gap: 10, width: "100%",
+                              padding: "7px 10px", marginBottom: 4, background: "var(--bg-primary)",
+                              border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", textAlign: "left",
+                            }}>
+                              <span style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 7px", fontSize: 11, fontWeight: 700, fontFamily: "monospace", whiteSpace: "nowrap" }}>
+                                {f.form_type}
+                              </span>
+                              <span style={{ flex: 1, fontSize: 13 }}>{f.primary_doc_description || f.primary_document || "Filing"}</span>
+                              <span style={{ fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>{f.filing_date}</span>
+                            </button>
+                          ))}
+                        </>
+                      )}
+
+                      {/* Step 3: Browse documents in filing */}
+                      {edgarSelectedFiling && (
+                        <>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                            <div style={{ fontSize: 13 }}>
+                              <span style={{ fontWeight: 600 }}>{edgarSelectedCompany?.name}</span>
+                              <span style={{ color: "var(--text-tertiary)", marginLeft: 8 }}>{edgarSelectedFiling.form_type} · {edgarSelectedFiling.filing_date}</span>
+                            </div>
+                            <button className="btn btn-secondary btn-sm" onClick={() => { setEdgarSelectedFiling(null); setEdgarDocuments([]); }}>
+                              ← Back
+                            </button>
+                          </div>
+                          {edgarDocsLoading && <div style={{ fontSize: 13, color: "var(--text-tertiary)" }}><span className="spinner" style={{ width: 12, height: 12 }} /> Loading documents…</div>}
+                          {filingImportMsg && (
+                            <div style={{ fontSize: 12, padding: "6px 10px", marginBottom: 8, borderRadius: 5, background: filingImportMsg.startsWith("✓") ? "#dcfce7" : "#fee2e2", color: filingImportMsg.startsWith("✓") ? "#166534" : "#991b1b" }}>
+                              {filingImportMsg}
+                            </div>
+                          )}
+                          {edgarDocuments.map(doc => (
+                            <div key={doc.url} style={{
+                              display: "flex", alignItems: "center", gap: 10,
+                              padding: "7px 10px", marginBottom: 4, background: "var(--bg-primary)",
+                              border: "1px solid var(--border)", borderRadius: 6,
+                            }}>
+                              <span style={{ fontFamily: "monospace", fontSize: 11, color: "var(--text-tertiary)", minWidth: 36 }}>{doc.document_type}</span>
+                              <span style={{ flex: 1, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {doc.description || doc.filename}
+                              </span>
+                              {doc.size_bytes > 0 && <span style={{ fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>{Math.round(doc.size_bytes / 1024)}KB</span>}
+                              <button
+                                className="btn btn-secondary btn-sm"
+                                disabled={filingImporting === doc.url}
+                                onClick={() => handleImportEdgarDoc(doc)}
+                                style={{ whiteSpace: "nowrap", flexShrink: 0 }}
+                              >
+                                {filingImporting === doc.url
+                                  ? <><span className="spinner" style={{ width: 11, height: 11 }} /> Importing…</>
+                                  : "Import"}
+                              </button>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </>
+                  )}
+
+                  {filingTab === "sedar" && (
+                    <>
+                      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10, lineHeight: 1.6 }}>
+                        SEDAR+ does not provide a public API. Search for a company below to open the SEDAR+ website, then copy the document download URL and paste it here.
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                        <input
+                          className="form-input"
+                          style={{ flex: 1, fontSize: 13 }}
+                          placeholder="Company name (e.g. Agnico Eagle)"
+                          value={edgarQuery}
+                          onChange={e => setEdgarQuery(e.target.value)}
+                        />
+                        <button className="btn btn-secondary btn-sm" onClick={() => {
+                          getSedarSearchLink(edgarQuery).then(r => window.open(r.search_url, "_blank")).catch(() => {
+                            window.open(`https://www.sedarplus.ca/csa-party/records/search.html?keyword=${encodeURIComponent(edgarQuery)}`, "_blank");
+                          });
+                        }} disabled={!edgarQuery.trim()}>
+                          Open SEDAR+
+                        </button>
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>
+                        Paste a SEDAR+ document URL:
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input
+                          className="form-input"
+                          style={{ flex: 1, fontSize: 13 }}
+                          placeholder="https://www.sedarplus.ca/..."
+                          value={sedarUrl}
+                          onChange={e => setSedarUrl(e.target.value)}
+                        />
+                        <button className="btn btn-secondary btn-sm" disabled={sedarImporting || !sedarUrl.trim()} onClick={handleImportSedar}>
+                          {sedarImporting ? <><span className="spinner" style={{ width: 11, height: 11 }} /> Importing…</> : "Import"}
+                        </button>
+                      </div>
+                      {filingImportMsg && (
+                        <div style={{ fontSize: 12, padding: "6px 10px", marginTop: 8, borderRadius: 5, background: filingImportMsg.startsWith("✓") ? "#dcfce7" : "#fee2e2", color: filingImportMsg.startsWith("✓") ? "#166534" : "#991b1b" }}>
+                          {filingImportMsg}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {uploading && (
             <div style={{ textAlign: "center", padding: "16px 0", color: "var(--text-secondary)", fontSize: 13 }}>
               <span className="spinner" style={{ width: 16, height: 16 }} /> Uploading…
@@ -558,9 +1178,930 @@ export default function ProjectDetailPage() {
         </>
       )}
 
-      {/* Runs tab */}
-      {activeTab === "runs" && (
+      {/* Notes tab */}
+      {activeTab === "notes" && (
         <>
+          {/* Add note form */}
+          <form onSubmit={handleAddNote} style={{ marginBottom: 20 }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <select
+                className="form-input"
+                value={noteTag}
+                onChange={(e) => setNoteTag(e.target.value)}
+                style={{ width: 140, fontSize: 13, flexShrink: 0 }}
+              >
+                <option value="">No tag</option>
+                <option value="red flag">🚩 Red flag</option>
+                <option value="follow up">📌 Follow up</option>
+                <option value="assumption">⚠️ Assumption</option>
+                <option value="positive">✅ Positive</option>
+                <option value="observation">💡 Observation</option>
+              </select>
+              <input
+                className="form-input"
+                placeholder="Quick note — e.g. 'Capex seems low for this jurisdiction'"
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                disabled={noteLoading}
+                style={{ flex: 1, fontSize: 13 }}
+              />
+              <button
+                type="submit"
+                className="btn btn-primary btn-sm"
+                disabled={noteLoading || !noteText.trim()}
+                style={{ whiteSpace: "nowrap" }}
+              >
+                {noteLoading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : "Add Note"}
+              </button>
+            </div>
+          </form>
+
+          {/* Notes list */}
+          {notes.length === 0 ? (
+            <div className="empty-state">
+              <h3>No notes yet</h3>
+              <p>Add observations, red flags, or follow-up items above</p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {notes.map((note) => (
+                <div key={note.note_id} className="card" style={{ padding: "14px 16px" }}>
+                  {editingNoteId === note.note_id ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <textarea
+                        className="form-input"
+                        value={editingText}
+                        onChange={(e) => setEditingText(e.target.value)}
+                        rows={3}
+                        autoFocus
+                        style={{ fontSize: 13, resize: "vertical" }}
+                      />
+                      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                        <button className="btn btn-secondary btn-sm" onClick={() => { setEditingNoteId(null); setEditingText(""); }}>
+                          Cancel
+                        </button>
+                        <button className="btn btn-primary btn-sm" onClick={() => handleSaveEdit(note.note_id)}>
+                          Save
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                      <div style={{ flex: 1 }}>
+                        {note.tag && (
+                          <div style={{
+                            display: "inline-block",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            padding: "2px 8px",
+                            borderRadius: 4,
+                            marginBottom: 6,
+                            background: note.tag === "red flag" ? "rgba(220,53,53,0.1)" :
+                                        note.tag === "follow up" ? "rgba(99,102,241,0.1)" :
+                                        note.tag === "assumption" ? "rgba(245,158,11,0.1)" :
+                                        note.tag === "positive" ? "rgba(34,197,94,0.1)" :
+                                        "rgba(107,114,128,0.1)",
+                            color: note.tag === "red flag" ? "#dc3535" :
+                                   note.tag === "follow up" ? "#6366f1" :
+                                   note.tag === "assumption" ? "#d97706" :
+                                   note.tag === "positive" ? "#16a34a" :
+                                   "var(--text-secondary)",
+                          }}>
+                            {note.tag === "red flag" ? "🚩" : note.tag === "follow up" ? "📌" : note.tag === "assumption" ? "⚠️" : note.tag === "positive" ? "✅" : "💡"} {note.tag}
+                          </div>
+                        )}
+                        <div style={{ fontSize: 14, lineHeight: 1.55, color: "var(--text-primary)" }}>
+                          {note.content}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 6 }}>
+                          {new Date(note.created_at).toLocaleString()}
+                          {note.updated_at !== note.created_at && " · edited"}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                        <button
+                          className="btn-icon-only"
+                          title="Edit note"
+                          onClick={() => { setEditingNoteId(note.note_id); setEditingText(note.content); }}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M13.586 3.586a2 2 0 112.828 2.828l-8.793 8.793-3.536.707.707-3.535 8.794-8.793z" />
+                          </svg>
+                        </button>
+                        <button
+                          className="btn-icon-only"
+                          title="Delete note"
+                          onClick={() => handleDeleteNote(note.note_id)}
+                        >
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Details tab — all secondary data as scrollable sub-sections ── */}
+      {activeTab === "details" && (
+        <div>
+
+          {/* Checks & Jurisdiction */}
+          <div className="details-section">
+            <div className="details-section-heading">Jurisdiction &amp; Sanity Checks</div>
+          {/* Jurisdiction Parameters */}
+          {jurisdictionRisk && !jurisdictionRisk.not_found && (
+            <div style={{ marginBottom: 28 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>
+                {jurisdictionRisk.name}
+                <span style={{ fontWeight: 400, color: "var(--text-tertiary)", fontSize: 12, marginLeft: 10 }}>
+                  {jurisdictionRisk.country} · {jurisdictionRisk.region}
+                </span>
+              </div>
+              <div style={{ overflowX: "auto", marginBottom: 14 }}>
+                <table className="details-param-table">
+                  <tbody>
+                    {[
+                      ["Risk Tier", `Tier ${jurisdictionRisk.risk_tier} — ${["","Top Jurisdiction","Favourable","Elevated Risk","Very High Risk"][jurisdictionRisk.risk_tier as number] ?? ""}`],
+                      ["Risk Level", String(jurisdictionRisk.risk_level ?? "—").replace(/_/g, " ")],
+                      ["Political Stability", String(jurisdictionRisk.political_stability ?? "—").replace(/_/g, " ")],
+                      ["Corporate Tax Rate", jurisdictionRisk.corporate_tax_rate_pct != null ? `${jurisdictionRisk.corporate_tax_rate_pct}%` : "n/a"],
+                      ["State Royalty Rate", jurisdictionRisk.royalty_rate ?? "n/a"],
+                      ["Permitting Timeline", jurisdictionRisk.permitting_timeline_months != null ? `~${jurisdictionRisk.permitting_timeline_months} months` : "n/a"],
+                      ...(jurisdictionRisk.fraser_rank_approx != null ? [["Fraser Institute PPI Rank", `~#${jurisdictionRisk.fraser_rank_approx}`]] : []),
+                    ].map(([k, v]) => (
+                      <tr key={k as string}>
+                        <td className="details-param-key">{k as string}</td>
+                        <td className="details-param-val">{v as string}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {(jurisdictionRisk.key_strengths?.length > 0 || jurisdictionRisk.key_risks?.length > 0) && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+                  {jurisdictionRisk.key_strengths?.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Strengths</div>
+                      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.75 }}>
+                        {jurisdictionRisk.key_strengths.slice(0, 5).map((s: string, i: number) => <li key={i}>{s}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {jurisdictionRisk.key_risks?.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Key Risks</div>
+                      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.75 }}>
+                        {jurisdictionRisk.key_risks.slice(0, 5).map((r: string, i: number) => <li key={i}>{r}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+              {jurisdictionRisk.recent_policy_notes && (
+                <p style={{ marginTop: 12, fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.65, fontStyle: "italic" }}>
+                  {jurisdictionRisk.recent_policy_notes}
+                </p>
+              )}
+            </div>
+          )}
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+            <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+              Sanity checks on resource data, economics, and royalties
+            </div>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={handleRunSanityCheck}
+              disabled={sanityLoading}
+            >
+              {sanityLoading ? <><span className="spinner" style={{ width: 12, height: 12 }} /> Running…</> : "Re-run checks"}
+            </button>
+          </div>
+
+          {sanityLoading && !sanity && (
+            <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-tertiary)" }}>
+              <span className="spinner" style={{ width: 22, height: 22 }} />
+            </div>
+          )}
+
+          {sanity && (() => {
+            const overallLabel = sanity.overall === "no_data" ? "No data" : sanity.overall.charAt(0).toUpperCase() + sanity.overall.slice(1);
+            const levelLabel: Record<string, string> = { critical: "Critical", warning: "Caution", ok: "Pass", info: "Info" };
+            const allFlags = sanity.flags ?? [];
+
+            return (
+              <>
+                <p style={{ fontSize: 13.5, color: "var(--text-secondary)", marginBottom: 16, lineHeight: 1.7 }}>
+                  Overall result: <strong>{overallLabel}</strong>
+                  {sanity.critical_count > 0 ? ` · ${sanity.critical_count} critical item${sanity.critical_count !== 1 ? "s" : ""}` : ""}
+                  {sanity.warning_count > 0 ? ` · ${sanity.warning_count} caution${sanity.warning_count !== 1 ? "s" : ""}` : ""}
+                  {sanity.ok_count > 0 ? ` · ${sanity.ok_count} passed` : ""}
+                </p>
+                {allFlags.length > 0 && (
+                  <div style={{ overflowX: "auto" }}>
+                    <table className="details-param-table" style={{ width: "100%" }}>
+                      <thead>
+                        <tr>
+                          <th>Check</th>
+                          <th>Value</th>
+                          <th>Finding</th>
+                          <th>Expected</th>
+                          <th>Result</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allFlags.map((f, i) => (
+                          <tr key={i}>
+                            <td style={{ fontWeight: 500 }}>{f.field}</td>
+                            <td style={{ fontFamily: "monospace", fontSize: 12, color: "var(--text-secondary)" }}>{f.value ?? "—"}</td>
+                            <td style={{ color: "var(--text-secondary)", lineHeight: 1.5 }}>{f.message}</td>
+                            <td style={{ color: "var(--text-tertiary)", fontSize: 12 }}>{f.expected_range ?? "—"}</td>
+                            <td style={{ whiteSpace: "nowrap", color: "var(--text-secondary)", fontSize: 12 }}>{levelLabel[f.level] ?? f.level}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            );
+          })()}
+
+          {!sanity && !sanityLoading && (
+            <div className="empty-state">
+              <h3>Run sanity checks</h3>
+              <p>Checks grade ranges, contained metal consistency, economic plausibility, and royalty burden</p>
+              <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={handleRunSanityCheck}>
+                Run Checks
+              </button>
+            </div>
+          )}
+          </div>
+
+          {/* Royalties */}
+          <div className="details-section">
+            <div className="details-section-heading">Royalties &amp; Encumbrances</div>
+          {/* Warnings — plain text notes */}
+          {royaltySummary && royaltySummary.warnings.length > 0 && (
+            <ul style={{ margin: "0 0 20px", paddingLeft: 20, fontSize: 13.5, color: "var(--text-secondary)", lineHeight: 1.8 }}>
+              {royaltySummary.warnings.map((w, i) => (
+                <li key={i}>
+                  <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
+                    {w.level === "critical" ? "Critical" : w.level === "caution" ? "Caution" : "Note"}:{" "}
+                  </span>
+                  {w.message}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Summary chips */}
+          {royaltySummary && royaltyList.length > 0 && (
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
+              {[
+                { label: "Agreements", value: String(royaltySummary.total_agreements) },
+                ...(royaltySummary.nsr_equivalent_pct != null
+                  ? [{ label: "NSR / GR Total", value: `${royaltySummary.nsr_equivalent_pct}%`, warn: royaltySummary.nsr_equivalent_pct >= 2 }]
+                  : []),
+                ...(royaltySummary.has_stream ? [{ label: "Stream", value: "Yes", warn: false }] : []),
+                ...(royaltySummary.has_npi ? [{ label: "NPI", value: "Yes", warn: false }] : []),
+                ...(royaltySummary.buyback_options > 0 ? [{ label: "Buyback Options", value: String(royaltySummary.buyback_options), warn: false }] : []),
+              ].map(({ label, value, warn }) => (
+                <div key={label} className="card" style={{ padding: "10px 14px", textAlign: "center", minWidth: 100 }}>
+                  <div style={{ fontSize: 10, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>{label}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: warn ? "#d97706" : "var(--text-primary)" }}>{value}</div>
+                </div>
+              ))}
+              {royaltySummary.holders.length > 0 && (
+                <div className="card" style={{ padding: "10px 14px" }}>
+                  <div style={{ fontSize: 10, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Holders</div>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>{royaltySummary.holders.join(", ")}</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Add button */}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowRoyaltyForm(v => !v)}>
+              {showRoyaltyForm ? "Cancel" : "+ Add Royalty / Stream"}
+            </button>
+          </div>
+
+          {/* Add form */}
+          {showRoyaltyForm && (
+            <form onSubmit={handleAddRoyalty} className="card" style={{ padding: "18px 20px", marginBottom: 18 }}>
+              <div style={{ fontWeight: 600, marginBottom: 14, fontSize: 14 }}>New Royalty or Stream Agreement</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+                <div>
+                  <label className="form-label">Type *</label>
+                  <select className="form-input" style={{ fontSize: 13 }} required
+                    value={royaltyForm.royalty_type ?? "NSR"}
+                    onChange={(e) => setRoyaltyForm(f => ({ ...f, royalty_type: e.target.value as Royalty["royalty_type"] }))}>
+                    {["NSR", "GR", "NPI", "Stream", "Sliding NSR", "Production", "Other"].map(t => (
+                      <option key={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="form-label">Holder *</label>
+                  <input className="form-input" style={{ fontSize: 13 }} required
+                    value={royaltyForm.holder ?? ""}
+                    onChange={(e) => setRoyaltyForm(f => ({ ...f, holder: e.target.value }))}
+                    placeholder="Franco-Nevada, Wheaton, etc." />
+                </div>
+                <div>
+                  <label className="form-label">Metals Covered</label>
+                  <input className="form-input" style={{ fontSize: 13 }}
+                    value={royaltyForm.metals_covered ?? ""}
+                    onChange={(e) => setRoyaltyForm(f => ({ ...f, metals_covered: e.target.value || null }))}
+                    placeholder="Gold, Silver, All metals…" />
+                </div>
+
+                {/* NSR / GR / NPI / Sliding rate */}
+                {["NSR", "GR", "NPI", "Sliding NSR"].includes(royaltyForm.royalty_type ?? "NSR") && (
+                  <div>
+                    <label className="form-label">Rate (%)</label>
+                    <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.01" max="100"
+                      value={royaltyForm.rate_pct ?? ""}
+                      onChange={(e) => setRoyaltyForm(f => ({ ...f, rate_pct: e.target.value ? parseFloat(e.target.value) : null }))}
+                      placeholder="e.g. 2.0" />
+                  </div>
+                )}
+
+                {/* Sliding scale detail */}
+                {royaltyForm.royalty_type === "Sliding NSR" && (
+                  <div style={{ gridColumn: "span 2" }}>
+                    <label className="form-label">Scale Detail</label>
+                    <input className="form-input" style={{ fontSize: 13 }}
+                      value={royaltyForm.sliding_scale_notes ?? ""}
+                      onChange={(e) => setRoyaltyForm(f => ({ ...f, sliding_scale_notes: e.target.value || null }))}
+                      placeholder="e.g. 1% below $1500, 1.5% at $1500–$2000, 2% above $2000" />
+                  </div>
+                )}
+
+                {/* Stream fields */}
+                {royaltyForm.royalty_type === "Stream" && (<>
+                  <div>
+                    <label className="form-label">Stream % of Production</label>
+                    <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.1" max="100"
+                      value={royaltyForm.stream_pct ?? ""}
+                      onChange={(e) => setRoyaltyForm(f => ({ ...f, stream_pct: e.target.value ? parseFloat(e.target.value) : null }))}
+                      placeholder="e.g. 20" />
+                  </div>
+                  <div>
+                    <label className="form-label">Purchase Price</label>
+                    <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.01"
+                      value={royaltyForm.stream_purchase_price ?? ""}
+                      onChange={(e) => setRoyaltyForm(f => ({ ...f, stream_purchase_price: e.target.value ? parseFloat(e.target.value) : null }))}
+                      placeholder="e.g. 400" />
+                  </div>
+                  <div>
+                    <label className="form-label">Purchase Unit</label>
+                    <input className="form-input" style={{ fontSize: 13 }}
+                      value={royaltyForm.stream_purchase_unit ?? ""}
+                      onChange={(e) => setRoyaltyForm(f => ({ ...f, stream_purchase_unit: e.target.value || null }))}
+                      placeholder="USD/oz, USD/lb…" />
+                  </div>
+                </>)}
+
+                {/* Production royalty */}
+                {royaltyForm.royalty_type === "Production" && (<>
+                  <div>
+                    <label className="form-label">Rate per Unit (USD)</label>
+                    <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.01"
+                      value={royaltyForm.production_rate ?? ""}
+                      onChange={(e) => setRoyaltyForm(f => ({ ...f, production_rate: e.target.value ? parseFloat(e.target.value) : null }))}
+                      placeholder="e.g. 10" />
+                  </div>
+                  <div>
+                    <label className="form-label">Unit</label>
+                    <input className="form-input" style={{ fontSize: 13 }}
+                      value={royaltyForm.production_unit ?? ""}
+                      onChange={(e) => setRoyaltyForm(f => ({ ...f, production_unit: e.target.value || null }))}
+                      placeholder="USD/oz, USD/t…" />
+                  </div>
+                </>)}
+
+                <div>
+                  <label className="form-label">Area Covered</label>
+                  <input className="form-input" style={{ fontSize: 13 }}
+                    value={royaltyForm.area_covered ?? ""}
+                    onChange={(e) => setRoyaltyForm(f => ({ ...f, area_covered: e.target.value || null }))}
+                    placeholder="All claims, Block A…" />
+                </div>
+                <div>
+                  <label className="form-label">Recorded Instrument</label>
+                  <input className="form-input" style={{ fontSize: 13 }}
+                    value={royaltyForm.recorded_instrument ?? ""}
+                    onChange={(e) => setRoyaltyForm(f => ({ ...f, recorded_instrument: e.target.value || null }))}
+                    placeholder="Title No. / Agreement ref." />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 22 }}>
+                  <input type="checkbox" id="buyback-check"
+                    checked={royaltyForm.buyback_option ?? false}
+                    onChange={(e) => setRoyaltyForm(f => ({ ...f, buyback_option: e.target.checked }))} />
+                  <label htmlFor="buyback-check" style={{ fontSize: 13, cursor: "pointer" }}>Buyback option</label>
+                </div>
+                {royaltyForm.buyback_option && (
+                  <div>
+                    <label className="form-label">Buyback Price (M USD)</label>
+                    <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.1"
+                      value={royaltyForm.buyback_price_musd ?? ""}
+                      onChange={(e) => setRoyaltyForm(f => ({ ...f, buyback_price_musd: e.target.value ? parseFloat(e.target.value) : null }))}
+                      placeholder="e.g. 5.0" />
+                  </div>
+                )}
+                <div style={{ gridColumn: "span 3" }}>
+                  <label className="form-label">Notes</label>
+                  <input className="form-input" style={{ fontSize: 13 }}
+                    value={royaltyForm.notes ?? ""}
+                    onChange={(e) => setRoyaltyForm(f => ({ ...f, notes: e.target.value || null }))}
+                    placeholder="Context, caveats, source document…" />
+                </div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button type="button" className="btn btn-secondary btn-sm"
+                  onClick={() => { setShowRoyaltyForm(false); setRoyaltyForm({ royalty_type: "NSR", buyback_option: false }); }}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary btn-sm"
+                  disabled={royaltyLoading || !royaltyForm.holder?.trim()}>
+                  {royaltyLoading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : "Save"}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Royalties list */}
+          {royaltyList.length === 0 && !showRoyaltyForm ? (
+            <div className="empty-state">
+              <h3>No royalties or streams recorded</h3>
+              <p>Add NSR, gross royalty, NPI, or streaming agreements to flag their impact on project economics</p>
+            </div>
+          ) : royaltyList.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {royaltyList.map((r) => {
+                const typeColor: Record<string, string> = {
+                  NSR: "#6366f1", GR: "#8b5cf6", NPI: "#ec4899",
+                  Stream: "#0891b2", "Sliding NSR": "#7c3aed",
+                  Production: "#059669", Other: "#6b7280",
+                };
+                const color = typeColor[r.royalty_type] ?? "#6b7280";
+                return (
+                  <div key={r.royalty_id} className="card" style={{ padding: "14px 16px", display: "flex", gap: 14, alignItems: "flex-start" }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
+                          background: `${color}18`, color,
+                        }}>{r.royalty_type}</span>
+                        <span style={{ fontWeight: 600, fontSize: 14 }}>{r.holder}</span>
+                        {r.buyback_option && (
+                          <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 4, background: "rgba(34,197,94,0.1)", color: "#16a34a", fontWeight: 600 }}>
+                            Buyback option{r.buyback_price_musd ? ` $${r.buyback_price_musd}M` : ""}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px", fontSize: 13, color: "var(--text-secondary)" }}>
+                        {r.rate_pct != null && <span><strong>{r.rate_pct}%</strong> {r.royalty_type}</span>}
+                        {r.stream_pct != null && <span><strong>{r.stream_pct}%</strong> of production @ {r.stream_purchase_price} {r.stream_purchase_unit}</span>}
+                        {r.production_rate != null && <span><strong>{r.production_rate}</strong> {r.production_unit} / unit</span>}
+                        {r.metals_covered && <span>Metals: {r.metals_covered}</span>}
+                        {r.area_covered && <span>Area: {r.area_covered}</span>}
+                        {r.recorded_instrument && <span>Ref: {r.recorded_instrument}</span>}
+                      </div>
+                      {r.sliding_scale_notes && (
+                        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4, fontStyle: "italic" }}>{r.sliding_scale_notes}</div>
+                      )}
+                      {r.notes && (
+                        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4 }}>{r.notes}</div>
+                      )}
+                    </div>
+                    <button className="btn-icon-only" title="Remove" onClick={() => handleDeleteRoyalty(r.royalty_id)}>
+                      <TrashIcon />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          </div>
+
+          {/* Resources */}
+          <div className="details-section">
+            <div className="details-section-heading">Resource Estimates</div>
+          {/* Warnings */}
+          {resourceSummary && resourceSummary.warnings.length > 0 && (
+            <ul style={{ margin: "0 0 20px", paddingLeft: 20, fontSize: 13.5, color: "var(--text-secondary)", lineHeight: 1.8 }}>
+              {resourceSummary.warnings.map((w, i) => (
+                <li key={i}>
+                  <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
+                    {w.level === "critical" ? "Critical" : w.level === "caution" ? "Caution" : "Note"}:{" "}
+                  </span>
+                  {w.message}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Summary stats */}
+          {resourceSummary && resources.length > 0 && (
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
+              {[
+                { label: "Total Tonnage", value: resourceSummary.total_tonnage_mt != null ? `${resourceSummary.total_tonnage_mt.toLocaleString()} Mt` : "—" },
+                { label: "M+I Tonnage", value: resourceSummary.measured_mt != null || resourceSummary.indicated_mt != null
+                    ? `${((resourceSummary.measured_mt ?? 0) + (resourceSummary.indicated_mt ?? 0)).toLocaleString()} Mt` : "—" },
+                { label: "Inferred Tonnage", value: resourceSummary.inferred_mt != null ? `${resourceSummary.inferred_mt.toLocaleString()} Mt` : "—" },
+                { label: "Inferred %", value: resourceSummary.inferred_pct != null ? `${resourceSummary.inferred_pct}%` : "—" },
+                ...(resourceSummary.total_contained != null ? [{ label: `Total ${resourceSummary.metal_unit ?? "Metal"}`, value: String(resourceSummary.total_contained) }] : []),
+                ...(resourceSummary.measured_indicated_contained != null ? [{ label: `M+I ${resourceSummary.metal_unit ?? "Metal"}`, value: String(resourceSummary.measured_indicated_contained) }] : []),
+              ].map(({ label, value }) => (
+                <div key={label} className="card" style={{ padding: "10px 14px", minWidth: 110, textAlign: "center" }}>
+                  <div style={{ fontSize: 10, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>{label}</div>
+                  <div style={{
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: label === "Inferred %" && (resourceSummary.inferred_pct ?? 0) > 50 ? "#d97706" : "var(--text-primary)",
+                  }}>{value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add button */}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowResForm((v) => !v)}>
+              {showResForm ? "Cancel" : "+ Add Row"}
+            </button>
+          </div>
+
+          {/* Add form */}
+          {showResForm && (
+            <form onSubmit={handleAddResource} className="card" style={{ padding: "18px 20px", marginBottom: 18 }}>
+              <div style={{ fontWeight: 600, marginBottom: 14, fontSize: 14 }}>Add Resource Row</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+                <div>
+                  <label className="form-label">Classification *</label>
+                  <select className="form-input" style={{ fontSize: 13 }} required
+                    value={resForm.classification ?? "Measured"}
+                    onChange={(e) => setResForm((f) => ({ ...f, classification: e.target.value as ResourceRow["classification"] }))}>
+                    <option>Measured</option>
+                    <option>Indicated</option>
+                    <option>Inferred</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="form-label">Domain</label>
+                  <input className="form-input" style={{ fontSize: 13 }}
+                    value={resForm.domain ?? ""}
+                    onChange={(e) => setResForm((f) => ({ ...f, domain: e.target.value || null }))}
+                    placeholder="oxide, sulphide, all…" />
+                </div>
+                <div>
+                  <label className="form-label">Tonnage (Mt)</label>
+                  <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.001"
+                    value={resForm.tonnage_mt ?? ""}
+                    onChange={(e) => setResForm((f) => ({ ...f, tonnage_mt: e.target.value ? parseFloat(e.target.value) : null }))}
+                    placeholder="e.g. 45.2" />
+                </div>
+                <div>
+                  <label className="form-label">Grade</label>
+                  <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.001"
+                    value={resForm.grade_value ?? ""}
+                    onChange={(e) => setResForm((f) => ({ ...f, grade_value: e.target.value ? parseFloat(e.target.value) : null }))}
+                    placeholder="e.g. 1.24" />
+                </div>
+                <div>
+                  <label className="form-label">Grade Unit</label>
+                  <input className="form-input" style={{ fontSize: 13 }}
+                    value={resForm.grade_unit ?? ""}
+                    onChange={(e) => setResForm((f) => ({ ...f, grade_unit: e.target.value || null }))}
+                    placeholder="g/t, %, ppm, lb/t…" />
+                </div>
+                <div>
+                  <label className="form-label">Cut-off Grade</label>
+                  <input className="form-input" style={{ fontSize: 13 }}
+                    value={resForm.cut_off_grade ?? ""}
+                    onChange={(e) => setResForm((f) => ({ ...f, cut_off_grade: e.target.value || null }))}
+                    placeholder="e.g. 0.3 g/t Au" />
+                </div>
+                <div>
+                  <label className="form-label">Contained Metal</label>
+                  <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.01"
+                    value={resForm.contained_metal ?? ""}
+                    onChange={(e) => setResForm((f) => ({ ...f, contained_metal: e.target.value ? parseFloat(e.target.value) : null }))}
+                    placeholder="e.g. 2.4" />
+                </div>
+                <div>
+                  <label className="form-label">Metal Unit</label>
+                  <input className="form-input" style={{ fontSize: 13 }}
+                    value={resForm.metal_unit ?? ""}
+                    onChange={(e) => setResForm((f) => ({ ...f, metal_unit: e.target.value || null }))}
+                    placeholder="Moz, Mlb, kt…" />
+                </div>
+                <div>
+                  <label className="form-label">Notes</label>
+                  <input className="form-input" style={{ fontSize: 13 }}
+                    value={resForm.notes ?? ""}
+                    onChange={(e) => setResForm((f) => ({ ...f, notes: e.target.value || null }))}
+                    placeholder="Optional" />
+                </div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setShowResForm(false); setResForm({ classification: "Measured" }); }}>Cancel</button>
+                <button type="submit" className="btn btn-primary btn-sm" disabled={resLoading}>
+                  {resLoading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : "Save Row"}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Resource table */}
+          {resources.length === 0 && !showResForm ? (
+            <div className="empty-state">
+              <h3>No resource data yet</h3>
+              <p>Add Measured, Indicated, and Inferred rows to enable classification analysis and compliance warnings</p>
+            </div>
+          ) : resources.length > 0 ? (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    {["Classification", "Domain", "Tonnage (Mt)", "Grade", "Unit", "Cut-off", "Contained", "Metal Unit", "Notes", ""].map((h) => (
+                      <th key={h} style={{ textAlign: "left", padding: "8px 10px", fontWeight: 600, fontSize: 11, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {resources.map((row) => {
+                    const classColor = row.classification === "Measured"
+                      ? { bg: "rgba(34,197,94,0.08)", text: "#15803d" }
+                      : row.classification === "Indicated"
+                      ? { bg: "rgba(59,130,246,0.08)", text: "#1d4ed8" }
+                      : { bg: "rgba(245,158,11,0.08)", text: "#b45309" };
+                    return (
+                      <tr key={row.row_id} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                        <td style={{ padding: "10px 10px" }}>
+                          <span style={{
+                            display: "inline-block",
+                            padding: "2px 8px",
+                            borderRadius: 4,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            background: classColor.bg,
+                            color: classColor.text,
+                          }}>
+                            {row.classification}
+                          </span>
+                        </td>
+                        <td style={{ padding: "10px 10px", color: "var(--text-secondary)" }}>{row.domain ?? "—"}</td>
+                        <td style={{ padding: "10px 10px", color: "var(--text-primary)", fontWeight: 500, textAlign: "right" }}>
+                          {row.tonnage_mt != null ? row.tonnage_mt.toLocaleString() : "—"}
+                        </td>
+                        <td style={{ padding: "10px 10px", color: "var(--text-primary)", textAlign: "right" }}>
+                          {row.grade_value != null ? row.grade_value : "—"}
+                        </td>
+                        <td style={{ padding: "10px 10px", color: "var(--text-secondary)" }}>{row.grade_unit ?? "—"}</td>
+                        <td style={{ padding: "10px 10px", color: "var(--text-secondary)", fontSize: 12 }}>{row.cut_off_grade ?? "—"}</td>
+                        <td style={{ padding: "10px 10px", color: "var(--text-primary)", fontWeight: 500, textAlign: "right" }}>
+                          {row.contained_metal != null ? row.contained_metal.toLocaleString() : "—"}
+                        </td>
+                        <td style={{ padding: "10px 10px", color: "var(--text-secondary)" }}>{row.metal_unit ?? "—"}</td>
+                        <td style={{ padding: "10px 10px", color: "var(--text-secondary)", fontSize: 12, fontStyle: row.notes ? "italic" : "normal" }}>{row.notes ?? "—"}</td>
+                        <td style={{ padding: "10px 6px" }}>
+                          <button className="btn-icon-only" title="Remove row" onClick={() => handleDeleteResource(row.row_id)}>
+                            <TrashIcon />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                {resources.length > 1 && resourceSummary && (
+                  <tfoot>
+                    <tr style={{ borderTop: "2px solid var(--border)", background: "var(--surface-alt, var(--surface))" }}>
+                      <td colSpan={2} style={{ padding: "9px 10px", fontWeight: 700, fontSize: 12, color: "var(--text-secondary)" }}>Total</td>
+                      <td style={{ padding: "9px 10px", fontWeight: 700, textAlign: "right" }}>
+                        {resourceSummary.total_tonnage_mt != null ? resourceSummary.total_tonnage_mt.toLocaleString() : "—"}
+                      </td>
+                      <td colSpan={4} />
+                      <td style={{ padding: "9px 10px", fontWeight: 700, textAlign: "right" }}>
+                        {resourceSummary.total_contained != null ? resourceSummary.total_contained.toLocaleString() : "—"}
+                      </td>
+                      <td colSpan={2} />
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          ) : null}
+          </div>
+
+          {/* Comparable Transactions */}
+          <div className="details-section">
+            <div className="details-section-heading">Comparable Transactions</div>
+          {/* Summary stats */}
+          {comps.length > 0 && (() => {
+            const withPrice = comps.filter((c) => c.price_per_unit_usd != null);
+            const avgPrice = withPrice.length
+              ? withPrice.reduce((s, c) => s + (c.price_per_unit_usd ?? 0), 0) / withPrice.length
+              : null;
+            const withValue = comps.filter((c) => c.transaction_value_musd != null);
+            const avgValue = withValue.length
+              ? withValue.reduce((s, c) => s + (c.transaction_value_musd ?? 0), 0) / withValue.length
+              : null;
+            return (
+              <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
+                <div className="card" style={{ flex: 1, padding: "12px 16px", textAlign: "center" }}>
+                  <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Transactions</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)" }}>{comps.length}</div>
+                </div>
+                {avgPrice != null && (
+                  <div className="card" style={{ flex: 1, padding: "12px 16px", textAlign: "center" }}>
+                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Avg $/unit</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)" }}>${avgPrice.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                  </div>
+                )}
+                {avgValue != null && (
+                  <div className="card" style={{ flex: 1, padding: "12px 16px", textAlign: "center" }}>
+                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Avg Deal (M USD)</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)" }}>${avgValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}M</div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Add button */}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => setShowCompForm((v) => !v)}
+            >
+              {showCompForm ? "Cancel" : "+ Add Comparable"}
+            </button>
+          </div>
+
+          {/* Add form */}
+          {showCompForm && (
+            <form onSubmit={handleAddComp} className="card" style={{ padding: "18px 20px", marginBottom: 18 }}>
+              <div style={{ fontWeight: 600, marginBottom: 14, fontSize: 14 }}>New Comparable Transaction</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                <div>
+                  <label className="form-label">Project / Asset Name *</label>
+                  <input className="form-input" style={{ fontSize: 13 }} required
+                    value={compForm.project_name ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, project_name: e.target.value }))}
+                    placeholder="e.g. Snowline Raven Gold" />
+                </div>
+                <div>
+                  <label className="form-label">Commodity</label>
+                  <input className="form-input" style={{ fontSize: 13 }}
+                    value={compForm.commodity ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, commodity: e.target.value }))}
+                    placeholder="Gold, Copper, Lithium…" />
+                </div>
+                <div>
+                  <label className="form-label">Acquirer</label>
+                  <input className="form-input" style={{ fontSize: 13 }}
+                    value={compForm.acquirer ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, acquirer: e.target.value }))}
+                    placeholder="Buyer" />
+                </div>
+                <div>
+                  <label className="form-label">Seller</label>
+                  <input className="form-input" style={{ fontSize: 13 }}
+                    value={compForm.seller ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, seller: e.target.value }))}
+                    placeholder="Vendor / target company" />
+                </div>
+                <div>
+                  <label className="form-label">Transaction Date</label>
+                  <input className="form-input" style={{ fontSize: 13 }}
+                    value={compForm.transaction_date ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, transaction_date: e.target.value }))}
+                    placeholder="2024 or 2024-03" />
+                </div>
+                <div>
+                  <label className="form-label">Study Stage</label>
+                  <select className="form-input" style={{ fontSize: 13 }}
+                    value={compForm.study_stage ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, study_stage: e.target.value || null }))}>
+                    <option value="">—</option>
+                    <option>PEA</option>
+                    <option>PFS</option>
+                    <option>FS</option>
+                    <option>Producing</option>
+                    <option>Exploration</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="form-label">Deal Value (M USD)</label>
+                  <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.1"
+                    value={compForm.transaction_value_musd ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, transaction_value_musd: e.target.value ? parseFloat(e.target.value) : null }))}
+                    placeholder="e.g. 450" />
+                </div>
+                <div>
+                  <label className="form-label">Resource (Moz or Mlb)</label>
+                  <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.01"
+                    value={compForm.resource_moz_or_mlb ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, resource_moz_or_mlb: e.target.value ? parseFloat(e.target.value) : null }))}
+                    placeholder="Total M&I+Inf" />
+                </div>
+                <div>
+                  <label className="form-label">Implied $/oz or $/lb</label>
+                  <input className="form-input" style={{ fontSize: 13 }} type="number" min="0" step="0.01"
+                    value={compForm.price_per_unit_usd ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, price_per_unit_usd: e.target.value ? parseFloat(e.target.value) : null }))}
+                    placeholder="e.g. 85" />
+                </div>
+                <div>
+                  <label className="form-label">Jurisdiction</label>
+                  <input className="form-input" style={{ fontSize: 13 }}
+                    value={compForm.jurisdiction ?? ""}
+                    onChange={(e) => setCompForm((f) => ({ ...f, jurisdiction: e.target.value }))}
+                    placeholder="Canada, Australia…" />
+                </div>
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <label className="form-label">Notes</label>
+                <input className="form-input" style={{ fontSize: 13 }}
+                  value={compForm.notes ?? ""}
+                  onChange={(e) => setCompForm((f) => ({ ...f, notes: e.target.value }))}
+                  placeholder="Any context or caveats" />
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setShowCompForm(false); setCompForm({}); }}>Cancel</button>
+                <button type="submit" className="btn btn-primary btn-sm" disabled={compLoading || !compForm.project_name?.trim()}>
+                  {compLoading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : "Save"}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Table */}
+          {comps.length === 0 && !showCompForm ? (
+            <div className="empty-state">
+              <h3>No comparables yet</h3>
+              <p>Add reference transactions to benchmark valuation metrics</p>
+            </div>
+          ) : comps.length > 0 ? (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    {["Project / Asset", "Commodity", "Date", "Stage", "Deal (M USD)", "Resource", "$/unit", "Jurisdiction", ""].map((h) => (
+                      <th key={h} style={{ textAlign: "left", padding: "8px 10px", fontWeight: 600, fontSize: 11, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {comps.map((c) => (
+                    <tr key={c.comp_id} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                      <td style={{ padding: "10px 10px", fontWeight: 500, color: "var(--text-primary)" }}>
+                        {c.project_name}
+                        {(c.acquirer || c.seller) && (
+                          <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
+                            {[c.acquirer, c.seller].filter(Boolean).join(" ← ")}
+                          </div>
+                        )}
+                        {c.notes && <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2, fontStyle: "italic" }}>{c.notes}</div>}
+                      </td>
+                      <td style={{ padding: "10px 10px", color: "var(--text-secondary)" }}>{c.commodity ?? "—"}</td>
+                      <td style={{ padding: "10px 10px", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{c.transaction_date ?? "—"}</td>
+                      <td style={{ padding: "10px 10px", color: "var(--text-secondary)" }}>{c.study_stage ?? "—"}</td>
+                      <td style={{ padding: "10px 10px", color: "var(--text-secondary)", textAlign: "right" }}>
+                        {c.transaction_value_musd != null ? `$${c.transaction_value_musd.toLocaleString()}M` : "—"}
+                      </td>
+                      <td style={{ padding: "10px 10px", color: "var(--text-secondary)", textAlign: "right" }}>
+                        {c.resource_moz_or_mlb != null ? `${c.resource_moz_or_mlb}M` : "—"}
+                      </td>
+                      <td style={{ padding: "10px 10px", fontWeight: 600, color: "var(--text-primary)", textAlign: "right" }}>
+                        {c.price_per_unit_usd != null ? `$${c.price_per_unit_usd.toLocaleString()}` : "—"}
+                      </td>
+                      <td style={{ padding: "10px 10px", color: "var(--text-secondary)" }}>{c.jurisdiction ?? "—"}</td>
+                      <td style={{ padding: "10px 6px" }}>
+                        <button className="btn-icon-only" title="Remove" onClick={() => handleDeleteComp(c.comp_id)}>
+                          <TrashIcon />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          </div>
+
+          {/* Run History */}
+          <div className="details-section">
+            <div className="details-section-heading">Run History</div>
           {runs.length === 0 ? (
             <div className="empty-state">
               <h3>No runs yet</h3>
@@ -601,7 +2142,442 @@ export default function ProjectDetailPage() {
               ))}
             </div>
           )}
-        </>
+          </div>
+
+          {/* News */}
+          <div className="details-section">
+            <div className="details-section-heading">Market News</div>
+          {/* Header row */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 15 }}>News &amp; Market Intelligence</div>
+              {newsFeed && (
+                <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>
+                  Last updated {new Date(newsFeed.fetched_at).toLocaleString()} · {newsFeed.project_name} · {newsFeed.commodity}
+                  {newsFeed.jurisdiction ? ` · ${newsFeed.jurisdiction}` : ""}
+                </div>
+              )}
+            </div>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={async () => {
+                setNewsRefreshing(true);
+                try {
+                  const feed = await refreshProjectNews(id);
+                  setNewsFeed(feed);
+                } catch {
+                  // swallow
+                } finally {
+                  setNewsRefreshing(false);
+                }
+              }}
+              disabled={newsRefreshing}
+            >
+              {newsRefreshing
+                ? <><span className="spinner" style={{ width: 12, height: 12 }} /> Refreshing…</>
+                : "↻ Refresh"}
+            </button>
+          </div>
+
+          {/* Loading state */}
+          {(newsLoading || newsRefreshing) && !newsFeed && (
+            <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-tertiary)" }}>
+              <span className="spinner" style={{ width: 20, height: 20, display: "inline-block" }} />
+              <div style={{ marginTop: 10, fontSize: 13 }}>Searching for news…</div>
+            </div>
+          )}
+
+          {/* Error state */}
+          {newsFeed?.error && (
+            <div style={{ background: "#fff0f0", border: "1px solid #fecaca", borderRadius: 6, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#dc3535" }}>
+              ⚠ {newsFeed.error}
+            </div>
+          )}
+
+          {/* Empty state */}
+          {newsFeed && !newsFeed.error && newsFeed.items.length === 0 && (
+            <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-tertiary)" }}>
+              <div style={{ fontSize: 32, marginBottom: 10 }}>📰</div>
+              <div style={{ fontSize: 14, marginBottom: 4 }}>No news items yet</div>
+              <div style={{ fontSize: 12 }}>Click Refresh to search for recent news</div>
+            </div>
+          )}
+
+          {/* No feed yet */}
+          {!newsFeed && !newsLoading && (
+            <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-tertiary)" }}>
+              <div style={{ fontSize: 32, marginBottom: 10 }}>📰</div>
+              <div style={{ fontSize: 14, marginBottom: 4 }}>No news loaded</div>
+              <div style={{ fontSize: 12 }}>Click Refresh to search for recent news about this project</div>
+            </div>
+          )}
+
+          {/* News items */}
+          {newsFeed && newsFeed.items.length > 0 && (() => {
+            const CATEGORY_LABELS: Record<string, string> = {
+              resource_update: "Resource", financing: "Financing", permitting: "Permitting",
+              acquisition: "M&A", production: "Production", management: "Management",
+              esg: "ESG", market: "Market", other: "Other",
+            };
+            const SENTIMENT_COLOR: Record<string, string> = {
+              positive: "#16a34a", negative: "#dc3535", neutral: "var(--text-secondary)",
+            };
+            const RELEVANCE_STYLE: Record<string, React.CSSProperties> = {
+              high:   { background: "#dcfce7", color: "#166534", border: "1px solid #bbf7d0" },
+              medium: { background: "#fef9c3", color: "#854d0e", border: "1px solid #fde68a" },
+              low:    { background: "var(--bg-secondary)", color: "var(--text-secondary)", border: "1px solid var(--border)" },
+            };
+            const CATEGORY_STYLE: React.CSSProperties = {
+              display: "inline-block", padding: "1px 7px", borderRadius: 4,
+              fontSize: 11, fontWeight: 600, background: "var(--bg-secondary)",
+              border: "1px solid var(--border)", color: "var(--text-secondary)",
+            };
+
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {newsFeed.items.map((item: NewsItem) => (
+                  <div
+                    key={item.news_id}
+                    style={{
+                      background: "var(--bg-primary)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      padding: "14px 16px",
+                    }}
+                  >
+                    {/* Top row: headline + relevance badge */}
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.4, flex: 1 }}>
+                        {item.url
+                          ? <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "none" }}>{item.headline}</a>
+                          : item.headline}
+                      </div>
+                      <span style={{ ...RELEVANCE_STYLE[item.relevance] ?? RELEVANCE_STYLE.medium, padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>
+                        {item.relevance} relevance
+                      </span>
+                    </div>
+
+                    {/* Meta row */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{item.date}</span>
+                      <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>·</span>
+                      <span style={{ fontSize: 12, color: "var(--text-secondary)", fontStyle: "italic" }}>{item.source}</span>
+                      <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>·</span>
+                      <span style={CATEGORY_STYLE}>{CATEGORY_LABELS[item.category] ?? item.category}</span>
+                      <span style={{ fontSize: 12, color: SENTIMENT_COLOR[item.sentiment] ?? "var(--text-secondary)", fontWeight: 600 }}>
+                        {item.sentiment === "positive" ? "▲" : item.sentiment === "negative" ? "▼" : "–"} {item.sentiment}
+                      </span>
+                    </div>
+
+                    {/* Summary */}
+                    <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                      {item.summary}
+                    </div>
+
+                    {/* Tags */}
+                    {item.tags && item.tags.length > 0 && (
+                      <div style={{ marginTop: 8, display: "flex", gap: 5, flexWrap: "wrap" }}>
+                        {item.tags.map((tag: string) => (
+                          <span key={tag} style={{ fontSize: 11, padding: "1px 7px", borderRadius: 10, background: "var(--bg-secondary)", color: "var(--text-tertiary)", border: "1px solid var(--border)" }}>
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+          </div>
+
+          {/* Drillholes */}
+          {dhDataset && dhDataset.hole_count > 0 && (
+          <div className="details-section">
+            <div className="details-section-heading">Drill Hole Data</div>
+          {(() => {
+            const dataset = dhDataset!;
+            const collars = dataset.collars;
+            const assays  = dataset.assays;
+            const traces  = dataset.traces;
+            const analytes = dataset.analytes;
+            const selectedAnalyte = dhAnalyte || analytes[0] || "";
+
+            // ── Assay lookup: {hole_id → sorted assay rows}
+            const assaysByHole: Record<string, typeof assays> = {};
+            for (const a of assays) {
+              if (!assaysByHole[a.hole_id]) assaysByHole[a.hole_id] = [];
+              assaysByHole[a.hole_id].push(a);
+            }
+
+            // ── Analyte colour scale (white → gold orange → red)
+            const allVals = assays.map(a => Number(a[selectedAnalyte])).filter(v => !isNaN(v) && v > 0);
+            const maxVal = allVals.length ? Math.max(...allVals) : 1;
+            const p95 = allVals.length
+              ? [...allVals].sort((a, b) => a - b)[Math.floor(allVals.length * 0.95)] || maxVal
+              : maxVal;
+
+            function gradeColor(v: number | null | undefined): string {
+              if (v == null || isNaN(Number(v)) || Number(v) <= 0) return "#e5e7eb";
+              const t = Math.min(1, Number(v) / (p95 || maxVal || 1));
+              // White → amber → red
+              if (t < 0.5) {
+                const s = t * 2;
+                const r = Math.round(255);
+                const g = Math.round(255 - s * (255 - 160));
+                const b = Math.round(255 - s * 255);
+                return `rgb(${r},${g},${b})`;
+              } else {
+                const s = (t - 0.5) * 2;
+                const r = Math.round(255);
+                const g = Math.round(160 - s * 160);
+                const b = 0;
+                return `rgb(${r},${g},${b})`;
+              }
+            }
+
+            // ── Plan view: normalise XY to SVG space
+            const PLAN_W = 520, PLAN_H = 360, PLAN_PAD = 36;
+            const xs = collars.map(c => c.x).filter((v): v is number => v != null);
+            const ys = collars.map(c => c.y).filter((v): v is number => v != null);
+            const hasXY = xs.length > 0 && ys.length > 0;
+
+            let planScale = 1, planOX = PLAN_PAD, planOY = PLAN_PAD;
+            if (hasXY) {
+              const xMin = Math.min(...xs), xMax = Math.max(...xs);
+              const yMin = Math.min(...ys), yMax = Math.max(...ys);
+              const xRange = xMax - xMin || 1, yRange = yMax - yMin || 1;
+              const scaleX = (PLAN_W - PLAN_PAD * 2) / xRange;
+              const scaleY = (PLAN_H - PLAN_PAD * 2) / yRange;
+              planScale = Math.min(scaleX, scaleY);
+              planOX = PLAN_PAD + ((PLAN_W - PLAN_PAD * 2) - xRange * planScale) / 2;
+              planOY = PLAN_PAD + ((PLAN_H - PLAN_PAD * 2) - yRange * planScale) / 2 + yRange * planScale;
+            }
+
+            function toSvgX(x: number): number {
+              const xMin = Math.min(...xs);
+              return planOX + (x - xMin) * planScale;
+            }
+            function toSvgY(y: number): number {
+              const yMin = Math.min(...ys);
+              return planOY - (y - yMin) * planScale;
+            }
+
+            const selectedHole = dhSelectedHole;
+            const selectedTrace: TracePoint[] = selectedHole ? (traces[selectedHole] || []) : [];
+            const selectedAssays = selectedHole ? (assaysByHole[selectedHole] || []) : [];
+            const maxDepth = selectedAssays.length
+              ? Math.max(...selectedAssays.map(a => a.to_m || 0))
+              : (collars.find(c => c.hole_id === selectedHole)?.depth || 0);
+
+            const LOG_W = 220, LOG_H = 440, LOG_PAD_T = 32, LOG_DEPTH_COL = 38, LOG_BAR_X = 70, LOG_BAR_W = 100;
+            const depthScale = maxDepth > 0 ? (LOG_H - LOG_PAD_T - 10) / maxDepth : 1;
+
+            return (
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                {/* Left: plan view */}
+                <div style={{ flex: "0 0 auto", minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+                    Plan View · {collars.length} holes
+                  </div>
+                  <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden", background: "#f8f9fa", display: "inline-block" }}>
+                    {hasXY ? (
+                      <svg width={PLAN_W} height={PLAN_H} style={{ display: "block" }}>
+                        {/* Traces */}
+                        {Object.entries(traces).map(([hid, trace]) => {
+                          if (trace.length < 2) return null;
+                          const pts = trace.map(p => `${toSvgX(p.x)},${toSvgY(p.y)}`).join(" ");
+                          return (
+                            <polyline key={hid} points={pts} fill="none"
+                              stroke={hid === selectedHole ? "#2C4A3E" : "#9ca3af"}
+                              strokeWidth={hid === selectedHole ? 2 : 1}
+                              opacity={hid === selectedHole ? 1 : 0.5}
+                            />
+                          );
+                        })}
+                        {/* Collar dots */}
+                        {collars.map(c => {
+                          if (c.x == null || c.y == null) return null;
+                          const cx = toSvgX(c.x), cy = toSvgY(c.y);
+                          const sel = c.hole_id === selectedHole;
+                          return (
+                            <g key={c.hole_id} onClick={() => setDhSelectedHole(sel ? null : c.hole_id)} style={{ cursor: "pointer" }}>
+                              <circle cx={cx} cy={cy} r={sel ? 7 : 5}
+                                fill={sel ? "#2C4A3E" : "#6b7280"}
+                                stroke="white" strokeWidth={sel ? 2 : 1}
+                              />
+                              <text x={cx + 8} y={cy + 4} fontSize={sel ? 11 : 9}
+                                fill={sel ? "#2C4A3E" : "#374151"} fontWeight={sel ? "bold" : "normal"}>
+                                {c.hole_id}
+                              </text>
+                            </g>
+                          );
+                        })}
+                      </svg>
+                    ) : (
+                      <div style={{ width: PLAN_W, height: PLAN_H, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", color: "var(--text-tertiary)", gap: 8 }}>
+                        <div style={{ fontSize: 28 }}>📍</div>
+                        <div style={{ fontSize: 13 }}>{collars.length} holes loaded</div>
+                        <div style={{ fontSize: 11 }}>No X/Y coordinates — upload a collars file with Easting/Northing</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Collar table below plan */}
+                  <div style={{ marginTop: 12, maxHeight: 160, overflowY: "auto" }}>
+                    <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr style={{ background: "var(--bg-secondary)" }}>
+                          {["Hole ID", "X", "Y", "Z", "Depth (m)", "Az°", "Dip°"].map(h => (
+                            <th key={h} style={{ padding: "4px 8px", textAlign: "left", fontWeight: 600, color: "var(--text-tertiary)", borderBottom: "1px solid var(--border)" }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {collars.map(c => (
+                          <tr key={c.hole_id}
+                            onClick={() => setDhSelectedHole(c.hole_id === dhSelectedHole ? null : c.hole_id)}
+                            style={{ cursor: "pointer", background: c.hole_id === dhSelectedHole ? "#f0fdf4" : "transparent" }}>
+                            <td style={{ padding: "3px 8px", fontWeight: 600, color: "var(--text-primary)" }}>{c.hole_id}</td>
+                            {[c.x, c.y, c.z, c.depth, c.azimuth, c.dip].map((v, i) => (
+                              <td key={i} style={{ padding: "3px 8px", color: "var(--text-secondary)", fontFamily: "monospace" }}>
+                                {v != null ? v.toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—"}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Right: strip log for selected hole */}
+                {selectedHole && (
+                  <div style={{ flex: "1 1 auto", minWidth: 260 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                        {selectedHole} — Downhole Log
+                      </div>
+                      {analytes.length > 1 && (
+                        <select
+                          className="form-input"
+                          style={{ fontSize: 12, padding: "2px 8px", width: "auto" }}
+                          value={selectedAnalyte}
+                          onChange={e => setDhAnalyte(e.target.value)}
+                        >
+                          {analytes.map(a => <option key={a} value={a}>{a.toUpperCase()}</option>)}
+                        </select>
+                      )}
+                    </div>
+
+                    {selectedAssays.length === 0 ? (
+                      <div style={{ padding: "20px 0", color: "var(--text-tertiary)", fontSize: 13 }}>
+                        No assay intervals loaded for this hole.
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                        {/* SVG strip log */}
+                        <svg width={LOG_W} height={LOG_H} style={{ flex: "0 0 auto", border: "1px solid var(--border)", borderRadius: 6, background: "#fff" }}>
+                          {/* Axis label */}
+                          <text x={LOG_DEPTH_COL - 2} y={14} fontSize={9} fill="#9ca3af" textAnchor="middle">m</text>
+                          <text x={LOG_BAR_X + LOG_BAR_W / 2} y={14} fontSize={9} fill="#9ca3af" textAnchor="middle">{selectedAnalyte.toUpperCase()}</text>
+
+                          {/* Depth ticks */}
+                          {Array.from({ length: Math.ceil(maxDepth / 50) + 1 }, (_, i) => i * 50).map(d => {
+                            if (d > maxDepth + 5) return null;
+                            const y = LOG_PAD_T + d * depthScale;
+                            return (
+                              <g key={d}>
+                                <line x1={LOG_DEPTH_COL + 8} y1={y} x2={LOG_BAR_X + LOG_BAR_W + 4} y2={y} stroke="#e5e7eb" strokeWidth={1} />
+                                <text x={LOG_DEPTH_COL + 5} y={y + 3} fontSize={8.5} fill="#9ca3af" textAnchor="end">{d}</text>
+                              </g>
+                            );
+                          })}
+
+                          {/* Assay intervals */}
+                          {selectedAssays.map((a, i) => {
+                            const f = a.from_m ?? 0;
+                            const t = a.to_m ?? f;
+                            const y1 = LOG_PAD_T + f * depthScale;
+                            const h  = Math.max(1, (t - f) * depthScale);
+                            const v  = a[selectedAnalyte] as number | undefined;
+                            return (
+                              <g key={i}>
+                                <rect x={LOG_BAR_X} y={y1} width={LOG_BAR_W} height={h}
+                                  fill={gradeColor(v as number)}
+                                  stroke="#e5e7eb" strokeWidth={0.3}
+                                />
+                                {h > 14 && v != null && (
+                                  <text x={LOG_BAR_X + LOG_BAR_W + 4} y={y1 + h / 2 + 3}
+                                    fontSize={8} fill="#374151">
+                                    {Number(v).toFixed(Number(v) < 10 ? 2 : 1)}
+                                  </text>
+                                )}
+                              </g>
+                            );
+                          })}
+
+                          {/* EOH line */}
+                          {maxDepth > 0 && (
+                            <line x1={LOG_BAR_X - 4} y1={LOG_PAD_T + maxDepth * depthScale}
+                              x2={LOG_BAR_X + LOG_BAR_W + 4} y2={LOG_PAD_T + maxDepth * depthScale}
+                              stroke="#374151" strokeWidth={1.5} strokeDasharray="4,2"
+                            />
+                          )}
+                        </svg>
+
+                        {/* Assay table */}
+                        <div style={{ flex: 1, overflowY: "auto", maxHeight: LOG_H }}>
+                          <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse" }}>
+                            <thead>
+                              <tr style={{ background: "var(--bg-secondary)", position: "sticky", top: 0 }}>
+                                <th style={{ padding: "3px 6px", textAlign: "right", color: "var(--text-tertiary)", fontWeight: 600 }}>From</th>
+                                <th style={{ padding: "3px 6px", textAlign: "right", color: "var(--text-tertiary)", fontWeight: 600 }}>To</th>
+                                <th style={{ padding: "3px 6px", textAlign: "right", color: "var(--text-tertiary)", fontWeight: 600 }}>{selectedAnalyte.toUpperCase()}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selectedAssays.map((a, i) => {
+                                const v = a[selectedAnalyte] as number | undefined;
+                                return (
+                                  <tr key={i} style={{ background: i % 2 ? "var(--bg-secondary)" : "transparent" }}>
+                                    <td style={{ padding: "2px 6px", textAlign: "right", fontFamily: "monospace" }}>{a.from_m?.toFixed(1)}</td>
+                                    <td style={{ padding: "2px 6px", textAlign: "right", fontFamily: "monospace" }}>{a.to_m?.toFixed(1)}</td>
+                                    <td style={{ padding: "2px 6px", textAlign: "right", fontFamily: "monospace", fontWeight: v != null && v > p95 * 0.5 ? 700 : 400, color: v != null && v > p95 * 0.5 ? "#92400e" : "inherit" }}>
+                                      {v != null ? v.toFixed(Number(v) < 10 ? 2 : 1) : "—"}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Significant intercepts */}
+                    {selectedAssays.length > 0 && p95 > 0 && (() => {
+                      const cuts = selectedAssays.filter(a => (a[selectedAnalyte] as number) >= p95 * 0.5);
+                      if (!cuts.length) return null;
+                      const best = cuts.reduce((best, a) => ((a[selectedAnalyte] as number) > (best[selectedAnalyte] as number) ? a : best), cuts[0]);
+                      return (
+                        <div style={{ marginTop: 12, padding: "8px 12px", background: "#fef9c3", border: "1px solid #fde68a", borderRadius: 6, fontSize: 12 }}>
+                          <span style={{ fontWeight: 700, color: "#92400e" }}>Best intercept: </span>
+                          <span style={{ color: "#78350f" }}>
+                            {best.from_m?.toFixed(1)}m – {best.to_m?.toFixed(1)}m = {Number(best[selectedAnalyte]).toFixed(2)} {selectedAnalyte.toUpperCase()}
+                            {best.length ? ` over ${best.length.toFixed(1)}m` : ""}
+                          </span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+          </div>
+          )}
+        </div>
       )}
     </>
   );

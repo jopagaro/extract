@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { getReport } from "../api/client";
 
 // Same base URL logic as client.ts — no Vite proxy in the Tauri bundle
@@ -12,7 +12,7 @@ import type { ReportContent } from "../types";
 async function downloadReport(
   projectId: string,
   runId: string,
-  format: "json" | "md" | "txt" | "pdf"
+  format: "json" | "md" | "txt" | "pdf" | "pptx"
 ) {
   const url = `${API_BASE}/projects/${projectId}/reports/${runId}/export?format=${format}`;
   const res = await fetch(url);
@@ -239,37 +239,83 @@ function DcfSection({ data }: { data: Record<string, unknown> }) {
         </div>
       )}
 
-      {summary && (
-        <>
-          <div className="report-sub-label">Valuation Summary</div>
-          <div className="report-scalar-row" style={{ marginTop: 8 }}>
-            {Object.entries(summary)
-              .filter(([k, v]) => v !== null && !["project_id", "scenario", "after_tax", "notes", "aisc_unit"].includes(k))
-              .map(([k, v]) => (
-                <div key={k} className="report-scalar-chip">
-                  <span className="report-scalar-label">{k.replace(/_/g, " ")}</span>
-                  <span className="report-scalar-value">
-                    {typeof v === "number" ? v.toLocaleString() : String(v)}
-                    {k.includes("musd") ? " M USD" : ""}
-                    {k.includes("percent") ? "%" : ""}
-                    {k.includes("years") && !k.includes("depreciation") ? " yrs" : ""}
-                  </span>
-                </div>
-              ))}
-          </div>
-        </>
-      )}
+      {summary && (() => {
+        const rows = Object.entries(summary).filter(([k, v]) =>
+          v !== null && !["project_id", "scenario", "after_tax", "notes", "aisc_unit"].includes(k)
+        );
+        if (!rows.length) return null;
+        const fmt = (k: string, v: unknown) => {
+          const s = typeof v === "number" ? v.toLocaleString() : String(v);
+          if (k.includes("musd")) return s + " M USD";
+          if (k.includes("percent")) return s + "%";
+          if (k.includes("years") && !k.includes("depreciation")) return s + " yrs";
+          return s;
+        };
+        const label = (k: string) =>
+          k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        return (
+          <>
+            <div className="report-sub-label">Valuation Summary</div>
+            <div style={{ overflowX: "auto", marginTop: 8 }}>
+              <table className="report-table report-param-table">
+                <tbody>
+                  {rows.map(([k, v]) => (
+                    <tr key={k}>
+                      <td className="report-param-key">{label(k)}</td>
+                      <td className="report-param-val">{fmt(k, v)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        );
+      })()}
 
-      {sensitivity && (
-        <>
-          <div className="report-sub-label" style={{ marginTop: 24 }}>Sensitivity Analysis</div>
-          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
-            Base NPV: {(sensitivity as any).base_npv_musd} M USD
-            {(sensitivity as any).base_irr_percent != null &&
-              ` · Base IRR: ${(sensitivity as any).base_irr_percent}%`}
-          </p>
-        </>
-      )}
+      {sensitivity && (() => {
+        const s = sensitivity as Record<string, unknown>;
+        const baseNpv = s.base_npv_musd;
+        const baseIrr = s.base_irr_percent;
+        const scenarios = Object.entries(s).filter(([k]) =>
+          !["base_npv_musd", "base_irr_percent"].includes(k) && typeof s[k] === "object"
+        );
+        return (
+          <>
+            <div className="report-sub-label" style={{ marginTop: 32 }}>Sensitivity Analysis</div>
+            <p style={{ fontSize: 14, color: "var(--text-secondary)", margin: "8px 0 16px", lineHeight: 1.7 }}>
+              Base case: NPV {baseNpv != null ? `${baseNpv} M USD` : "n/a"}
+              {baseIrr != null ? ` · IRR ${baseIrr}%` : ""}
+            </p>
+            {scenarios.length > 0 && (
+              <div style={{ overflowX: "auto" }}>
+                <table className="report-table">
+                  <thead>
+                    <tr>
+                      <th>Scenario</th>
+                      {Object.keys((scenarios[0][1] as Record<string, unknown>) ?? {}).map(k => (
+                        <th key={k}>{k.replace(/_/g, " ")}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scenarios.map(([k, v]) => {
+                      const row = v as Record<string, unknown>;
+                      return (
+                        <tr key={k}>
+                          <td style={{ fontWeight: 500 }}>{k.replace(/_/g, " ")}</td>
+                          {Object.values(row).map((val, i) => (
+                            <td key={i}>{val != null ? String(val) : "—"}</td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {cashFlows && cashFlows.length > 0 && (
         <div style={{ marginTop: 24 }}>
@@ -301,82 +347,60 @@ type DataGap = {
 function DataGapSection({ data }: { data: Record<string, unknown> }) {
   const gaps = (data.data_gaps as DataGap[]) ?? [];
   const overall = data.overall_data_quality_comment as string | undefined;
-  const critical = data.critical_gaps_count as number | undefined;
-  const important = data.important_gaps_count as number | undefined;
-  const minor = data.minor_gaps_count as number | undefined;
 
-  const urgencyStyle: Record<string, React.CSSProperties> = {
-    critical: { color: "var(--danger)", fontWeight: 600 },
-    important: { color: "var(--warning)", fontWeight: 600 },
-    minor:    { color: "var(--text-tertiary)", fontWeight: 500 },
+  const priorityLabel: Record<string, string> = {
+    critical: "Critical",
+    important: "Important",
+    minor: "Minor",
   };
+
+  const visibleGaps = gaps.filter(
+    (g) => !g.gap_description || g.gap_description !== "No material gaps identified"
+  );
 
   return (
     <div className="report-specialist-body">
-      {overall && (
-        <p style={{ marginBottom: 20, lineHeight: 1.7 }}>{overall}</p>
-      )}
+      {overall && <p style={{ marginBottom: 24, lineHeight: 1.85 }}>{overall}</p>}
 
-      {/* Summary counts */}
-      {(critical != null || important != null || minor != null) && (
-        <div style={{ display: "flex", gap: 20, marginBottom: 24, paddingBottom: 16, borderBottom: "1px solid var(--border)" }}>
-          {critical != null && (
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: "var(--danger)" }}>{critical}</div>
-              <div style={{ fontSize: 12, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Critical</div>
-            </div>
-          )}
-          {important != null && (
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: "var(--warning)" }}>{important}</div>
-              <div style={{ fontSize: 12, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Important</div>
-            </div>
-          )}
-          {minor != null && (
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-secondary)" }}>{minor}</div>
-              <div style={{ fontSize: 12, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Minor</div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Gap list */}
-      {gaps.map((gap, i) => (
-        <div key={i} style={{
-          paddingBottom: 20,
-          marginBottom: 20,
-          borderBottom: i < gaps.length - 1 ? "1px solid var(--border)" : "none",
-        }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 6 }}>
-            <span style={{ fontWeight: 600, fontSize: 14 }}>{gap.domain}</span>
-            <span style={{ fontSize: 12, ...urgencyStyle[gap.urgency] }}>
-              {gap.urgency?.toUpperCase()}
-            </span>
-            {gap.blocking_advancement && (
-              <span style={{ fontSize: 11, color: "var(--danger)", background: "var(--danger-light)", padding: "1px 7px", borderRadius: 4 }}>
-                blocks advancement
-              </span>
-            )}
-          </div>
-          {gap.gap_description && gap.gap_description !== "No material gaps identified" && (
-            <p style={{ margin: "0 0 6px", fontSize: 14, lineHeight: 1.6 }}>{gap.gap_description}</p>
-          )}
-          {gap.impact_on_analysis && (
-            <p style={{ margin: "0 0 4px", fontSize: 13, color: "var(--text-secondary)", fontStyle: "italic" }}>
-              Impact: {gap.impact_on_analysis}
-            </p>
-          )}
-          {gap.recommended_action && (
-            <p style={{ margin: 0, fontSize: 13, color: "var(--text-secondary)" }}>
-              Action: {gap.recommended_action}
+      {visibleGaps.length > 0 ? (
+        <div style={{ overflowX: "auto" }}>
+          <table className="report-table">
+            <thead>
+              <tr>
+                <th>Domain</th>
+                <th>Gap</th>
+                <th>Impact on Analysis</th>
+                <th>Recommended Action</th>
+                <th>Priority</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleGaps.map((gap, i) => (
+                <tr key={i}>
+                  <td style={{ fontWeight: 500, whiteSpace: "nowrap" }}>
+                    {gap.domain}
+                    {gap.blocking_advancement && (
+                      <span title="Blocks study advancement" style={{ marginLeft: 4, color: "var(--text-tertiary)", fontSize: 11 }}>†</span>
+                    )}
+                  </td>
+                  <td style={{ lineHeight: 1.6 }}>{gap.gap_description}</td>
+                  <td style={{ color: "var(--text-secondary)", lineHeight: 1.6 }}>{gap.impact_on_analysis ?? "—"}</td>
+                  <td style={{ color: "var(--text-secondary)", lineHeight: 1.6 }}>{gap.recommended_action ?? "—"}</td>
+                  <td style={{ whiteSpace: "nowrap", color: "var(--text-secondary)" }}>
+                    {priorityLabel[gap.urgency] ?? gap.urgency}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {visibleGaps.some((g) => g.blocking_advancement) && (
+            <p style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 8, fontStyle: "italic" }}>
+              † Item blocks study advancement to next stage.
             </p>
           )}
         </div>
-      ))}
-
-      {gaps.length === 0 && (
-        <p style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>No data gaps identified.</p>
+      ) : (
+        <p style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>No material data gaps identified.</p>
       )}
     </div>
   );
@@ -399,70 +423,46 @@ function ConfidenceSection({ data }: { data: Record<string, unknown> }) {
 
   return (
     <div className="report-specialist-body">
-      {overall && (
-        <p style={{ lineHeight: 1.75, marginBottom: 20 }}>{overall}</p>
-      )}
+      {overall && <p style={{ lineHeight: 1.85, marginBottom: 20 }}>{overall}</p>}
 
       {(best || worst) && (
-        <div style={{
-          display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
-          marginBottom: 24, paddingBottom: 20,
-          borderBottom: "1px solid var(--border)",
-        }}>
-          {best && (
-            <div style={{ padding: "12px 16px", background: "var(--success-light)", borderRadius: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--success)", marginBottom: 6 }}>
-                Most reliable
-              </div>
-              <div style={{ fontSize: 13, lineHeight: 1.5 }}>{best}</div>
-            </div>
-          )}
-          {worst && (
-            <div style={{ padding: "12px 16px", background: "var(--warning-light)", borderRadius: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--warning)", marginBottom: 6 }}>
-                Least reliable
-              </div>
-              <div style={{ fontSize: 13, lineHeight: 1.5 }}>{worst}</div>
-            </div>
-          )}
-        </div>
+        <p style={{ lineHeight: 1.85, marginBottom: 24, color: "var(--text-secondary)", fontSize: 14 }}>
+          {best && <>The most reliably supported aspect of this analysis is {best.toLowerCase().endsWith(".") ? best : best + "."}</>}
+          {best && worst && " "}
+          {worst && <>The least reliable aspect, where additional verification is recommended, is {worst.toLowerCase().endsWith(".") ? worst : worst + "."}</>}
+        </p>
       )}
 
-      {domains.map((d, i) => (
-        <div key={i} style={{
-          paddingBottom: 18, marginBottom: 18,
-          borderBottom: i < domains.length - 1 ? "1px solid var(--border)" : "none",
-        }}>
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 5 }}>{d.domain}</div>
-          {d.confidence_descriptor && (
-            <p style={{ margin: "0 0 8px", fontSize: 14, fontStyle: "italic", color: "var(--text-secondary)", lineHeight: 1.6 }}>
-              {d.confidence_descriptor}
-            </p>
-          )}
-          <div style={{ display: "flex", gap: 24 }}>
-            {d.supporting_factors?.length > 0 && (
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--success)", marginBottom: 4 }}>
-                  Supports confidence
-                </div>
-                {d.supporting_factors.map((f, j) => (
-                  <div key={j} style={{ fontSize: 12.5, color: "var(--text-secondary)", marginBottom: 2 }}>+ {f}</div>
-                ))}
-              </div>
-            )}
-            {d.limiting_factors?.length > 0 && (
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--warning)", marginBottom: 4 }}>
-                  Limits confidence
-                </div>
-                {d.limiting_factors.map((f, j) => (
-                  <div key={j} style={{ fontSize: 12.5, color: "var(--text-secondary)", marginBottom: 2 }}>− {f}</div>
-                ))}
-              </div>
-            )}
-          </div>
+      {domains.length > 0 && (
+        <div style={{ overflowX: "auto" }}>
+          <table className="report-table">
+            <thead>
+              <tr>
+                <th>Domain</th>
+                <th>Assessment</th>
+                <th>Supports Confidence</th>
+                <th>Limits Confidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {domains.map((d, i) => (
+                <tr key={i}>
+                  <td style={{ fontWeight: 500, whiteSpace: "nowrap" }}>{d.domain}</td>
+                  <td style={{ fontStyle: "italic", color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                    {d.confidence_descriptor ?? "—"}
+                  </td>
+                  <td style={{ color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                    {d.supporting_factors?.length > 0 ? d.supporting_factors.join(" · ") : "—"}
+                  </td>
+                  <td style={{ color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                    {d.limiting_factors?.length > 0 ? d.limiting_factors.join(" · ") : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      ))}
+      )}
 
       {domains.length === 0 && (
         <p style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>No confidence assessment available.</p>
@@ -540,6 +540,350 @@ function DataSourcesSection({
   );
 }
 
+// ── Contradictions Section ───────────────────────────────────────────────────
+
+type Contradiction = {
+  contradiction_type: string;
+  description: string;
+  location_a: string;
+  value_a: string;
+  location_b: string;
+  value_b: string;
+  correct_value?: string | null;
+  severity: "critical" | "significant" | "minor";
+  economic_impact: "positive" | "negative" | "neutral" | "mixed" | "unknown";
+  resolution_required: string;
+};
+
+type ArithmeticError = {
+  field: string;
+  stated_value: string;
+  calculated_value: string;
+  formula_used: string;
+  discrepancy_pct?: number | null;
+};
+
+
+const CONTRADICTION_TYPE_LABEL: Record<string, string> = {
+  numeric_mismatch:       "Numeric mismatch",
+  arithmetic_error:       "Arithmetic error",
+  logical_inconsistency:  "Logical inconsistency",
+  temporal_inconsistency: "Temporal inconsistency",
+  classification_mismatch:"Classification mismatch",
+};
+
+function ContradictionsSection({ data }: { data: Record<string, unknown> }) {
+  const contradictions = (data.contradictions as Contradiction[]) ?? [];
+  const arithmeticErrors = (data.arithmetic_errors as ArithmeticError[]) ?? [];
+  const overall = data.overall_consistency_comment as string | undefined;
+
+  const typeLabel = (t: string) =>
+    CONTRADICTION_TYPE_LABEL[t] ?? t?.replace(/_/g, " ") ?? "Issue";
+
+  return (
+    <div className="report-specialist-body">
+      {overall && <p style={{ lineHeight: 1.85, marginBottom: 24 }}>{overall}</p>}
+
+      {arithmeticErrors.length > 0 && (
+        <>
+          <div className="report-sub-label">Arithmetic Errors</div>
+          <div style={{ overflowX: "auto", marginTop: 12 }}>
+            <table className="report-table">
+              <thead>
+                <tr>
+                  <th>Field</th>
+                  <th>Stated Value</th>
+                  <th>Calculated Value</th>
+                  <th>Formula Used</th>
+                  <th>Discrepancy</th>
+                </tr>
+              </thead>
+              <tbody>
+                {arithmeticErrors.map((e, i) => (
+                  <tr key={i}>
+                    <td style={{ fontWeight: 500 }}>{e.field}</td>
+                    <td>{e.stated_value}</td>
+                    <td>{e.calculated_value}</td>
+                    <td style={{ fontFamily: "monospace", fontSize: 12 }}>{e.formula_used}</td>
+                    <td>{e.discrepancy_pct != null ? `${e.discrepancy_pct.toFixed(1)}%` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {contradictions.length > 0 && (
+        <>
+          {arithmeticErrors.length > 0 && <div className="report-sub-label" style={{ marginTop: 36 }}>Contradictions</div>}
+          {contradictions.map((c, i) => (
+            <div key={i} style={{
+              paddingBottom: 24, marginBottom: 24,
+              borderBottom: i < contradictions.length - 1 ? "1px solid var(--border)" : "none",
+            }}>
+              <p style={{ margin: "0 0 8px", fontSize: 14, lineHeight: 1.7 }}>
+                <span style={{ fontWeight: 600 }}>{typeLabel(c.contradiction_type)}</span>
+                {c.economic_impact && c.economic_impact !== "unknown" && (
+                  <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}> · {c.economic_impact} economic impact</span>
+                )}
+                {c.severity === "critical" || c.severity === "significant" ? (
+                  <span style={{ color: "var(--text-secondary)", fontWeight: 400 }}> · {c.severity}</span>
+                ) : null}
+                {": "}
+                {c.description}
+              </p>
+              <p style={{ margin: "0 0 6px", fontSize: 13.5, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                {c.location_a} states <em>"{c.value_a}"</em>; {c.location_b} states <em>"{c.value_b}"</em>.
+                {c.correct_value ? ` The correct value is ${c.correct_value}.` : ""}
+              </p>
+              <p style={{ margin: 0, fontSize: 13, color: "var(--text-tertiary)", lineHeight: 1.6 }}>
+                Resolution required: {c.resolution_required}
+              </p>
+            </div>
+          ))}
+        </>
+      )}
+
+      {contradictions.length === 0 && arithmeticErrors.length === 0 && (
+        <p style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>
+          No contradictions or arithmetic errors identified.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Citations Section ────────────────────────────────────────────────────────
+
+type Citation = {
+  citation_id: string;
+  section: string;
+  claim: string;
+  source_file: string;
+  source_quote: string;
+  location_in_source?: string | null;
+  confidence: "direct" | "inferred" | "not_found";
+};
+
+const SECTION_LABEL: Record<string, string> = {
+  "03_geology":   "Geology & Resources",
+  "04_economics": "Economics",
+  "05_risks":     "Risks",
+  "06_dcf_model": "DCF Model",
+  "07_assembly":  "Analyst Narrative",
+  "08_data_gaps": "Data Gaps",
+};
+
+
+function CitationsSection({ data }: { data: Record<string, unknown> }) {
+  const citations = (data.citations as Citation[]) ?? [];
+  const comment = data.citation_coverage_comment as string | undefined;
+  const uncited = (data.uncited_sections as string[]) ?? [];
+  const notFound = data.not_found_count as number | undefined;
+
+  const confLabel: Record<string, string> = {
+    direct: "Direct",
+    inferred: "Inferred",
+    not_found: "Not found",
+  };
+
+  return (
+    <div className="report-specialist-body">
+      {comment && <p style={{ lineHeight: 1.85, marginBottom: 20 }}>{comment}</p>}
+
+      {uncited.length > 0 && (
+        <p style={{ fontSize: 13.5, color: "var(--text-secondary)", marginBottom: 16, lineHeight: 1.7 }}>
+          The following sections had no traceable citations: {uncited.map((s) => SECTION_LABEL[s] ?? s).join(", ")}.
+        </p>
+      )}
+      {notFound != null && notFound > 0 && (
+        <p style={{ fontSize: 13.5, color: "var(--text-secondary)", marginBottom: 20, lineHeight: 1.7 }}>
+          {notFound} claim{notFound !== 1 ? "s" : ""} could not be traced to a specific passage in the source documents and warrant analyst review.
+        </p>
+      )}
+
+      {citations.length > 0 ? (
+        <div style={{ overflowX: "auto" }}>
+          <table className="report-table">
+            <thead>
+              <tr>
+                <th style={{ width: 48 }}>Ref</th>
+                <th>Section</th>
+                <th>Claim</th>
+                <th>Source</th>
+                <th>Confidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {citations.map((c, i) => (
+                <tr key={c.citation_id ?? i}>
+                  <td style={{ fontFamily: "monospace", fontSize: 11, color: "var(--text-tertiary)" }}>{c.citation_id}</td>
+                  <td style={{ whiteSpace: "nowrap", color: "var(--text-secondary)", fontSize: 12 }}>{SECTION_LABEL[c.section] ?? c.section}</td>
+                  <td style={{ lineHeight: 1.55 }}>{c.claim}</td>
+                  <td style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                    {c.confidence !== "not_found" ? (
+                      <>
+                        <span style={{ fontWeight: 500 }}>{c.source_file}</span>
+                        {c.location_in_source && <span style={{ color: "var(--text-tertiary)" }}> — {c.location_in_source}</span>}
+                        {c.source_quote && <><br /><em style={{ fontSize: 11.5 }}>"{c.source_quote}"</em></>}
+                      </>
+                    ) : (
+                      <em style={{ color: "var(--text-tertiary)" }}>Not found in source documents</em>
+                    )}
+                  </td>
+                  <td style={{ whiteSpace: "nowrap", fontSize: 12, color: "var(--text-secondary)" }}>
+                    {confLabel[c.confidence] ?? c.confidence}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>No citations available for this run.</p>
+      )}
+    </div>
+  );
+}
+
+// ── Compliance Section ────────────────────────────────────────────────────────
+
+interface ComplianceCheck {
+  category: string;
+  requirement: string;
+  status: "met" | "partial" | "missing" | "not_applicable";
+  finding: string;
+  recommendation?: string | null;
+}
+
+interface ComplianceQP {
+  named: boolean;
+  name?: string | null;
+  credentials?: string | null;
+  affiliation?: string | null;
+  expertise_appropriate?: boolean | "unclear";
+}
+
+
+function ComplianceSection({ data }: { data: Record<string, unknown> }) {
+  const overallStatus = (data.overall_status as string | undefined) ?? "major_gaps";
+  const standard = (data.standard_applied_for_assessment as string | undefined) ?? "NI 43-101";
+  const standardDetected = (data.standard_detected as string | undefined) ?? "unclear";
+  const summary = data.overall_summary as string | undefined;
+  const qp = data.qualified_person as ComplianceQP | undefined;
+  const studyType = data.study_type as string | undefined;
+  const studyMatch = data.study_type_resource_match as string | undefined;
+  const studyMatchNote = data.study_type_resource_match_note as string | undefined;
+  const checks = (data.checks as ComplianceCheck[] | undefined) ?? [];
+  const criticalGaps = (data.critical_gaps as string[] | undefined) ?? [];
+  const minorGaps = (data.minor_gaps as string[] | undefined) ?? [];
+
+  const statusText: Record<string, string> = {
+    compliant: "compliant",
+    likely_compliant: "likely compliant, with only minor items identified",
+    deficiencies_found: "found to have deficiencies requiring attention",
+    major_gaps: "found to have major gaps",
+  };
+
+  const visibleChecks = checks.filter((c) => c.status !== "not_applicable");
+
+  const statusSymbol = (s: string) => {
+    if (s === "met") return "✓";
+    if (s === "partial") return "partial";
+    if (s === "missing") return "missing";
+    return "—";
+  };
+
+  return (
+    <div className="report-specialist-body">
+      {/* Prose overview */}
+      <p style={{ lineHeight: 1.85, marginBottom: summary ? 8 : 24 }}>
+        This report was assessed against{" "}
+        <strong>{standard}</strong>
+        {standardDetected !== standard && standardDetected !== "unclear"
+          ? ` (reporting standard detected in source documents: ${standardDetected})`
+          : ""}
+        {" "}and was {statusText[overallStatus] ?? overallStatus}.
+      </p>
+      {summary && <p style={{ lineHeight: 1.85, marginBottom: 24, color: "var(--text-secondary)" }}>{summary}</p>}
+
+      {/* QP / CP */}
+      {qp && (
+        <p style={{ lineHeight: 1.85, marginBottom: 24, fontSize: 14, color: "var(--text-secondary)" }}>
+          {qp.named
+            ? <>The qualified person named in this report is <strong>{qp.name ?? "unnamed"}</strong>
+                {qp.credentials ? ` (${qp.credentials})` : ""}
+                {qp.affiliation ? `, ${qp.affiliation}` : ""}.
+                {qp.expertise_appropriate === false ? " Note: the expertise listed may not be appropriate for this commodity and study type." : ""}
+              </>
+            : "No qualified person was identified in the source documents."}
+          {studyType && studyMatch && studyMatch !== "not_applicable" && (
+            <>{" "}The study is classified as a <strong>{studyType.toUpperCase()}</strong>; the resource classification is {
+              studyMatch === "ok" ? "consistent with this study stage" :
+              studyMatch === "concern" ? "a potential concern for this study stage" :
+              "inconsistent with this study stage"
+            }{studyMatchNote ? `: ${studyMatchNote}` : "."}</>
+          )}
+        </p>
+      )}
+
+      {/* Compliance checks table */}
+      {visibleChecks.length > 0 && (
+        <>
+          <div className="report-sub-label">Compliance Checklist</div>
+          <div style={{ overflowX: "auto", marginTop: 12 }}>
+            <table className="report-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 60 }}>Status</th>
+                  <th>Requirement</th>
+                  <th>Finding</th>
+                  <th>Recommendation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleChecks.map((c, i) => (
+                  <tr key={i}>
+                    <td style={{ fontWeight: 500, whiteSpace: "nowrap", color: c.status === "met" ? "var(--success)" : "var(--text-secondary)" }}>
+                      {statusSymbol(c.status)}
+                    </td>
+                    <td style={{ fontWeight: 500, lineHeight: 1.5 }}>{c.requirement}</td>
+                    <td style={{ color: "var(--text-secondary)", lineHeight: 1.5 }}>{c.finding}</td>
+                    <td style={{ color: "var(--text-secondary)", lineHeight: 1.5, fontStyle: "italic" }}>
+                      {c.recommendation && c.status !== "met" ? c.recommendation : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* Critical gaps */}
+      {criticalGaps.length > 0 && (
+        <>
+          <div className="report-sub-label" style={{ marginTop: 36 }}>Critical Gaps</div>
+          <ul style={{ margin: "12px 0 0", paddingLeft: 20, lineHeight: 1.85, color: "var(--text-primary)", fontSize: 14 }}>
+            {criticalGaps.map((g, i) => <li key={i}>{g}</li>)}
+          </ul>
+        </>
+      )}
+
+      {/* Minor gaps */}
+      {minorGaps.length > 0 && (
+        <>
+          <div className="report-sub-label" style={{ marginTop: 36 }}>Minor Gaps</div>
+          <ul style={{ margin: "12px 0 0", paddingLeft: 20, lineHeight: 1.85, color: "var(--text-secondary)", fontSize: 14 }}>
+            {minorGaps.map((g, i) => <li key={i}>{g}</li>)}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Section layout config ────────────────────────────────────────────────────
 
 type SectionLayer = "narrative" | "detail" | "appendix" | "hidden";
@@ -557,7 +901,10 @@ const SECTION_CONFIG: Record<string, {
   "06_dcf_model":       { title: "DCF Financial Model", subtitle: "Computed discounted cash flow analysis", layer: "detail", number: "4" },
   "08_data_gaps":       { title: "Data Gap Report", subtitle: "Material information gaps and recommended actions", layer: "detail", number: "5" },
   "09_confidence":      { title: "Confidence Assessment", subtitle: "How much trust to place in each section of this report", layer: "detail", number: "6" },
+  "10_contradictions":  { title: "Contradiction & Consistency Check", subtitle: "Internal contradictions, numeric mismatches, and arithmetic errors", layer: "detail", number: "7" },
+  "13_compliance":      { title: "NI 43-101 / JORC Compliance Check", subtitle: "Assessment against NI 43-101 and JORC Code 2012 reporting requirements", layer: "detail", number: "8" },
   "00_data_sources":    { title: "Appendix A — Source Documents", subtitle: "All documents used in this analysis", layer: "appendix" },
+  "11_citations":       { title: "Appendix B — Source Citations", subtitle: "Traceability index mapping report claims to source documents", layer: "appendix" },
   "01_project_facts":   { title: "Project Facts", layer: "hidden" },
   "02_executive_summary": { title: "Executive Summary", layer: "hidden" }, // legacy — replaced by assembly
 };
@@ -594,11 +941,13 @@ function TableOfContents({
 
 export default function ReportPage() {
   const { projectId, runId } = useParams<{ projectId: string; runId: string }>();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [report, setReport] = useState<ReportContent | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeSection, setActiveSection] = useState<string | null>(null);
+  const [scrollPct, setScrollPct] = useState(0);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   const id = projectId!;
   const rid = runId!;
@@ -610,23 +959,18 @@ export default function ReportPage() {
       .finally(() => setLoading(false));
   }, [id, rid]);
 
-  // Intersection observer for active TOC item
-  useEffect(() => {
-    if (!report) return;
-    const obs = new IntersectionObserver(
-      (entries) => {
-        const visible = entries.filter((e) => e.isIntersecting);
-        if (visible.length > 0) setActiveSection(visible[0].target.id);
-      },
-      { threshold: 0.2 }
-    );
-    Object.values(sectionRefs.current).forEach((el) => el && obs.observe(el));
-    return () => obs.disconnect();
-  }, [report]);
+  // Scroll progress bar
+  const handleScroll = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    const pct = scrollHeight <= clientHeight ? 100 : (scrollTop / (scrollHeight - clientHeight)) * 100;
+    setScrollPct(Math.min(100, Math.round(pct)));
+  }, []);
 
   if (loading) {
     return (
-      <div style={{ textAlign: "center", padding: "80px 0" }}>
+      <div className="report-full" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
         <span className="spinner" style={{ width: 28, height: 28, color: "var(--text-tertiary)" }} />
       </div>
     );
@@ -634,12 +978,14 @@ export default function ReportPage() {
 
   if (!report) {
     return (
-      <div className="empty-state">
-        <h3>Report not found</h3>
-        <p>This run may still be in progress or may have failed.</p>
-        <Link to={`/projects/${id}`} className="btn btn-secondary" style={{ marginTop: 8 }}>
-          Back to Project
-        </Link>
+      <div className="report-full" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div className="empty-state">
+          <h3>Report not found</h3>
+          <p>This run may still be in progress or may have failed.</p>
+          <Link to={`/projects/${id}`} className="btn btn-secondary" style={{ marginTop: 8 }}>
+            Back to Project
+          </Link>
+        </div>
       </div>
     );
   }
@@ -655,23 +1001,6 @@ export default function ReportPage() {
   const narrativeKeys = orderedKeys.filter((k) => SECTION_CONFIG[k]?.layer === "narrative");
   const detailKeys = orderedKeys.filter((k) => SECTION_CONFIG[k]?.layer === "detail");
   const appendixKeys = orderedKeys.filter((k) => SECTION_CONFIG[k]?.layer === "appendix");
-
-  const tocSections = [
-    ...narrativeKeys.map((k) => ({ key: k, title: "Analyst Narrative" })),
-    ...detailKeys.map((k) => ({
-      key: k,
-      title: SECTION_CONFIG[k]?.title ?? k,
-      number: SECTION_CONFIG[k]?.number,
-    })),
-    ...appendixKeys.map((k) => ({
-      key: k,
-      title: SECTION_CONFIG[k]?.title ?? k,
-    })),
-  ];
-
-  const scrollTo = (key: string) => {
-    sectionRefs.current[key]?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
 
   const renderSection = (key: string) => {
     const content = sections[key];
@@ -690,6 +1019,15 @@ export default function ReportPage() {
     if (key === "09_confidence") {
       return <ConfidenceSection data={content as Record<string, unknown>} />;
     }
+    if (key === "10_contradictions") {
+      return <ContradictionsSection data={content as Record<string, unknown>} />;
+    }
+    if (key === "11_citations") {
+      return <CitationsSection data={content as Record<string, unknown>} />;
+    }
+    if (key === "13_compliance") {
+      return <ComplianceSection data={content as Record<string, unknown>} />;
+    }
     if (typeof content === "object" && content !== null && !Array.isArray(content)) {
       return <SpecialistSection data={content as Record<string, unknown>} />;
     }
@@ -697,21 +1035,37 @@ export default function ReportPage() {
   };
 
   return (
-    <div className="report-page-layout">
-      {/* Left TOC */}
-      <aside className="report-toc-aside">
-        <TableOfContents
-          sections={tocSections}
-          activeSection={activeSection}
-          onNav={scrollTo}
-        />
-      </aside>
+    <div className="report-full" ref={containerRef} onScroll={handleScroll}>
+      {/* Scroll progress bar */}
+      <div className="report-progress-bar" style={{ width: `${scrollPct}%` }} />
 
-      {/* Main content */}
-      <main className="report-main">
+      {/* Top bar */}
+      <div className="report-topbar">
+        <button className="report-back-btn" onClick={() => navigate(`/projects/${id}`)}>
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+          </svg>
+          Back to project
+        </button>
+        <div className="report-topbar-title">{projectName}</div>
+        <div className="report-topbar-actions">
+          <button className="btn btn-primary btn-sm" onClick={() => downloadReport(id, rid, "pdf")}>
+            <DownloadIcon /> PDF
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => downloadReport(id, rid, "pptx")}>
+            <DownloadIcon /> PPT
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => downloadReport(id, rid, "md")}>
+            <DownloadIcon /> MD
+          </button>
+        </div>
+      </div>
+
+      {/* Article column */}
+      <div className="report-article">
         {/* Cover */}
         <div className="report-cover">
-          <div className="report-cover-eyebrow">Extract — Technical Analysis Report</div>
+          <div className="report-cover-eyebrow">Extract · Technical Analysis Report</div>
           <div className="report-cover-title">{projectName}</div>
           <div className="report-cover-subtitle">
             {(sections["07_assembly"] as any)?.study_level &&
@@ -720,13 +1074,12 @@ export default function ReportPage() {
               : ""}
             {(sections["07_assembly"] as any)?.project_stage ?? "Technical Analysis"}
           </div>
-
           <div className="report-cover-meta">
             {[
-              ["Report Date", generatedAt],
-              ["Run ID", rid],
-              ["Classification", "Internal — Confidential"],
-              ["Prepared By", "Extract AI"],
+              ["Date", generatedAt],
+              ["Run", rid.replace("run_", "")],
+              ["Classification", "Internal"],
+              ["Prepared by", "Extract AI"],
             ].map(([label, value]) => (
               <div key={label} className="report-cover-meta-item">
                 <div className="report-cover-meta-label">{label}</div>
@@ -734,65 +1087,36 @@ export default function ReportPage() {
               </div>
             ))}
           </div>
-
           <div className="report-disclaimer">
-            This report is generated by an AI system for internal research purposes only. It does
-            not constitute investment advice or a formal technical study. All data should be verified
-            against primary source documents.
+            AI-generated for internal research only. Not investment advice. Verify against source documents.
           </div>
-
           <div className="report-export-row">
-            <span style={{ fontSize: 12.5, color: "var(--text-tertiary)" }}>
+            <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
               {detailKeys.length} sections · {(sections["00_data_sources"] as any)?.file_count ?? 0} source documents
             </span>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn btn-primary btn-sm" onClick={() => downloadReport(id, rid, "pdf")}>
-                <DownloadIcon /> PDF
-              </button>
-              <button className="btn btn-secondary btn-sm" onClick={() => downloadReport(id, rid, "md")}>
-                <DownloadIcon /> Markdown
-              </button>
-              <button className="btn btn-secondary btn-sm" onClick={() => downloadReport(id, rid, "json")}>
-                <DownloadIcon /> JSON
-              </button>
-            </div>
+            <button className="btn btn-secondary btn-sm" onClick={() => downloadReport(id, rid, "json")}>
+              <DownloadIcon /> JSON
+            </button>
           </div>
         </div>
 
-        {/* Layer 1 — Analyst Narrative */}
+        {/* Narrative layer */}
         {narrativeKeys.map((key) => (
-          <div
-            key={key}
-            id={key}
-            ref={(el) => { sectionRefs.current[key] = el; }}
-            className="report-narrative-wrapper"
-          >
+          <div key={key} id={key} ref={(el) => { sectionRefs.current[key] = el; }} className="report-narrative-wrapper">
             {renderSection(key)}
           </div>
         ))}
 
-        {/* Layer 2 — Detailed sections */}
-        {detailKeys.length > 0 && (
-          <div className="report-detail-label">Detailed Analysis</div>
-        )}
+        {/* Detailed sections */}
+        {detailKeys.length > 0 && <div className="report-section-divider" />}
         {detailKeys.map((key) => {
           const cfg = SECTION_CONFIG[key];
           return (
-            <div
-              key={key}
-              id={key}
-              ref={(el) => { sectionRefs.current[key] = el; }}
-              className="report-section"
-            >
+            <div key={key} id={key} ref={(el) => { sectionRefs.current[key] = el; }} className="report-section">
               <div className="report-section-header">
                 <div className="report-section-heading">
-                  {cfg?.number && (
-                    <div className="report-section-number">Section {cfg.number}</div>
-                  )}
                   <div className="report-section-title">{cfg?.title ?? key}</div>
-                  {cfg?.subtitle && (
-                    <div className="report-section-subtitle">{cfg.subtitle}</div>
-                  )}
+                  {cfg?.subtitle && <div className="report-section-subtitle">{cfg.subtitle}</div>}
                 </div>
               </div>
               {renderSection(key)}
@@ -801,31 +1125,22 @@ export default function ReportPage() {
         })}
 
         {/* Appendix */}
-        {appendixKeys.length > 0 && (
-          <div className="report-detail-label">Appendix</div>
-        )}
+        {appendixKeys.length > 0 && <div className="report-section-divider" />}
         {appendixKeys.map((key) => {
           const cfg = SECTION_CONFIG[key];
           return (
-            <div
-              key={key}
-              id={key}
-              ref={(el) => { sectionRefs.current[key] = el; }}
-              className="report-section report-section--appendix"
-            >
+            <div key={key} id={key} ref={(el) => { sectionRefs.current[key] = el; }} className="report-section report-section--appendix">
               <div className="report-section-header">
                 <div className="report-section-heading">
                   <div className="report-section-title">{cfg?.title ?? key}</div>
-                  {cfg?.subtitle && (
-                    <div className="report-section-subtitle">{cfg.subtitle}</div>
-                  )}
+                  {cfg?.subtitle && <div className="report-section-subtitle">{cfg.subtitle}</div>}
                 </div>
               </div>
               {renderSection(key)}
             </div>
           );
         })}
-      </main>
+      </div>
     </div>
   );
 }

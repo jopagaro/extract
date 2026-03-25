@@ -1,0 +1,955 @@
+# Jurisdiction Risk Database
+# Covers ~45 key global mining jurisdictions.
+#
+# Fields:
+#   id                          - machine identifier (snake_case)
+#   name                        - display name
+#   country                     - sovereign country
+#   region                      - global region
+#   aliases                     - fuzzy-match synonyms (lowercase)
+#   risk_tier                   - 1 (top-tier) to 4 (very high risk)
+#   risk_level                  - low | moderate | high | very_high
+#   political_stability         - very_high | high | moderate | low | very_low
+#   fraser_rank_approx          - approximate Fraser Institute PPI rank (1 = best)
+#   permitting_timeline_months  - typical exploration-to-production permit timeline
+#   corporate_tax_rate_pct      - headline corporate / mining income tax rate (%)
+#   royalty_type                - royalty structure description
+#   royalty_rate                - royalty rate / range as a string
+#   key_strengths               - list of favourable attributes
+#   key_risks                   - list of risk factors
+#   recent_policy_notes         - material recent regulatory or policy changes
+
+jurisdictions:
+
+  # ── TIER 1 — Top-tier (low risk, high attractiveness) ────────────────────
+
+  - id: nevada_usa
+    name: Nevada, USA
+    country: United States
+    region: North America
+    aliases: ["nevada", "nevada usa", "nevada, united states", "nv", "us - nevada", "nv usa"]
+    risk_tier: 1
+    risk_level: low
+    political_stability: very_high
+    fraser_rank_approx: 3
+    permitting_timeline_months: 24
+    corporate_tax_rate_pct: 21.0
+    royalty_type: "State net proceeds of mines tax (2–5%); no federal royalty on patented land"
+    royalty_rate: "2–5% net proceeds"
+    key_strengths:
+      - World-class hard-rock mining infrastructure
+      - Established, transparent mining law
+      - Highly skilled local workforce
+      - Tier 1 gold district (Carlin, Battle Mountain, Walker Lane)
+      - Pro-mining regulatory culture
+      - No federal royalty on patented mining claims
+    key_risks:
+      - Water scarcity in arid basins
+      - Sage-grouse habitat restrictions on federal land
+      - Longer federal permitting timelines on BLM land (2–7 years)
+    recent_policy_notes: >
+      Biden-era withdrawal orders affected some areas near national monuments.
+      Nevada's state permitting remains efficient; federal NEPA review is the primary bottleneck.
+
+  - id: western_australia
+    name: Western Australia
+    country: Australia
+    region: Asia-Pacific
+    aliases: ["western australia", "wa australia", "wa", "perth", "pilbara", "kalgoorlie"]
+    risk_tier: 1
+    risk_level: low
+    political_stability: very_high
+    fraser_rank_approx: 4
+    permitting_timeline_months: 36
+    corporate_tax_rate_pct: 30.0
+    royalty_type: "State royalty on value of minerals"
+    royalty_rate: "2.5–5% ad valorem (gold: 2.5% of gross value)"
+    key_strengths:
+      - Premier global mining jurisdiction
+      - Tier 1 gold (Super Pit), iron ore, lithium, nickel
+      - Robust legal system; secure title
+      - Excellent infrastructure corridors
+      - Strong mining services sector
+    key_risks:
+      - High labour costs; skilled-worker shortages
+      - Native title negotiations can delay permits
+      - Long-haul logistics cost for remote tenements
+    recent_policy_notes: >
+      WA expanded its Critical Minerals Strategy in 2023. Native Title Act compliance
+      is mandatory for heritage surveys before disturbance. Government is actively
+      supporting battery-metals projects.
+
+  - id: quebec_canada
+    name: Quebec, Canada
+    country: Canada
+    region: North America
+    aliases: ["quebec", "québec", "qc", "canada - quebec", "james bay", "abitibi"]
+    risk_tier: 1
+    risk_level: low
+    political_stability: very_high
+    fraser_rank_approx: 6
+    permitting_timeline_months: 30
+    corporate_tax_rate_pct: 26.5
+    royalty_type: "Mining duties on annual profit"
+    royalty_rate: "16% of annual mining profit (reduced by depletion allowances)"
+    key_strengths:
+      - Tier 1 gold (Val-d'Or, Abitibi Greenstone Belt)
+      - Stable francophone legal tradition; clear title regime
+      - Renewable hydro power at competitive rates
+      - Strong government support for exploration (SQRC flow-through)
+      - Excellent infrastructure in southern shield
+    key_risks:
+      - Caribou habitat protections in Plan Nord area
+      - Francophone regulatory documentation requirements
+      - Remote infrastructure cost for far-north projects
+    recent_policy_notes: >
+      Quebec's Plan Nord remains active. New critical minerals roadmap published 2023.
+      Mining Act modernisation (Bill 43) increased community consultation obligations.
+
+  - id: ontario_canada
+    name: Ontario, Canada
+    country: Canada
+    region: North America
+    aliases: ["ontario", "on", "canada - ontario", "timmins", "thunder bay", "red lake", "sudbury"]
+    risk_tier: 1
+    risk_level: low
+    political_stability: very_high
+    fraser_rank_approx: 9
+    permitting_timeline_months: 36
+    corporate_tax_rate_pct: 26.5
+    royalty_type: "Mining tax on net profit"
+    royalty_rate: "10% on first $500K profit; 5% thereafter (Ontario Mining Tax)"
+    key_strengths:
+      - Prolific gold belts (Red Lake, Timmins, Kirkland Lake)
+      - Strong capital markets access (Toronto Stock Exchange)
+      - Established environmental and mining law
+      - Skilled workforce and mining services hub
+    key_risks:
+      - Crown land Treaty obligations with First Nations
+      - Long MOECC environmental assessment timelines
+      - Significant infrastructure gaps in Northern Ontario
+    recent_policy_notes: >
+      Ontario's Critical Minerals Strategy (2022) streamlines critical-mineral permitting.
+      The province is actively accelerating Ring of Fire (chromite/nickel) reviews.
+
+  - id: finland
+    name: Finland
+    country: Finland
+    region: Europe
+    aliases: ["finland", "finnish", "lapland", "suomi"]
+    risk_tier: 1
+    risk_level: low
+    political_stability: very_high
+    fraser_rank_approx: 7
+    permitting_timeline_months: 36
+    corporate_tax_rate_pct: 20.0
+    royalty_type: "No statutory mining royalty; annual land fees apply"
+    royalty_rate: "No royalty (land-use fees only)"
+    key_strengths:
+      - No royalty on mined minerals — very low fiscal burden
+      - EU member; stable rule of law
+      - Excellent technical workforce; strong R&D culture
+      - Emerging battery-metals district (lithium, cobalt, nickel)
+      - Clean energy grid supports low-carbon production
+    key_risks:
+      - Arctic conditions raise capex and opex
+      - Public opposition to mine development has increased
+      - Reindeer herding rights require consultation in Lapland
+    recent_policy_notes: >
+      2023 Mining Act amendment introduced strengthened community and Sami consultation.
+      Finland is a priority jurisdiction under the EU Critical Raw Materials Act.
+
+  - id: sweden
+    name: Sweden
+    country: Sweden
+    region: Europe
+    aliases: ["sweden", "swedish", "boliden", "kiruna", "skellefte"]
+    risk_tier: 1
+    risk_level: low
+    political_stability: very_high
+    fraser_rank_approx: 10
+    permitting_timeline_months: 48
+    corporate_tax_rate_pct: 20.6
+    royalty_type: "Mineral concession fee; no production royalty"
+    royalty_rate: "No royalty (annual concession fees)"
+    key_strengths:
+      - No production royalty
+      - Long mining heritage (Boliden, LKAB)
+      - Very low sovereign risk
+      - EU membership; access to financing
+      - Strong technical education base
+    key_risks:
+      - Very long permitting (Environmental Code review averages 4–6 years)
+      - Growing public opposition to new open-pit mines
+      - Reindeer herding rights disputes in north
+    recent_policy_notes: >
+      Sweden's new government (2022) pledged to speed up permitting. The Norra Kärr
+      rare-earths project faced prolonged review — illustrative of opposition risk.
+      Sweden is prioritised under the EU CRMA.
+
+  - id: british_columbia_canada
+    name: British Columbia, Canada
+    country: Canada
+    region: North America
+    aliases: ["british columbia", "bc", "bc canada", "canada - bc", "canada - british columbia", "golden triangle", "stewart"]
+    risk_tier: 1
+    risk_level: low
+    political_stability: very_high
+    fraser_rank_approx: 15
+    permitting_timeline_months: 48
+    corporate_tax_rate_pct: 27.0
+    royalty_type: "Mineral tax on net current proceeds"
+    royalty_rate: "2% net current proceeds (<$10M); 13% above threshold"
+    key_strengths:
+      - World-class copper-gold district (Golden Triangle, Highland Valley)
+      - Strong legal framework; secure title
+      - Access to Pacific ports
+      - Clean hydro power
+    key_risks:
+      - Complex First Nations FPIC obligations
+      - Some of the longest environmental assessment timelines in Canada
+      - BC NDP government has historically raised compliance costs
+    recent_policy_notes: >
+      BC's new Environmental Assessment Act (2019) adds DRIPA obligations. The
+      federal Impact Assessment Act (C-69) adds a second-tier review for major mines.
+
+  # ── TIER 2 — Favourable (moderate-low risk) ───────────────────────────────
+
+  - id: chile
+    name: Chile
+    country: Chile
+    region: South America
+    aliases: ["chile", "chilean", "atacama", "antofagasta region", "maricunga"]
+    risk_tier: 2
+    risk_level: moderate
+    political_stability: high
+    fraser_rank_approx: 22
+    permitting_timeline_months: 36
+    corporate_tax_rate_pct: 27.0
+    royalty_type: "Mining royalty on operating income (Ley Minera)"
+    royalty_rate: "1–14% sliding scale on operating income (royalty reform 2023)"
+    key_strengths:
+      - World's largest copper producer
+      - Tier 1 lithium (Atacama SQM, Albemarle)
+      - Established mining culture; skilled workforce
+      - Good infrastructure in Norte Grande
+      - Strong institutional framework
+    key_risks:
+      - 2023 mining royalty significantly increased burden
+      - Political transition risk (2022 new constitution failed; second attempt)
+      - Water scarcity critical in Atacama
+      - Community opposition to water use
+      - CODELCO nationalisation precedent for lithium brine
+    recent_policy_notes: >
+      Chile's 2023 royalty reform introduced a 1% ad valorem + profit-share royalty
+      on large copper/lithium producers, meaningfully increasing fiscal burden.
+      Lithium nationalisation decree (2023) applies to new lithium projects; existing
+      SQM/Albemarle contracts are grandfathered.
+
+  - id: peru
+    name: Peru
+    country: Peru
+    region: South America
+    aliases: ["peru", "peruvian", "cajamarca", "arequipa", "cerro de pasco", "cusco"]
+    risk_tier: 2
+    risk_level: moderate
+    political_stability: moderate
+    fraser_rank_approx: 38
+    permitting_timeline_months: 48
+    corporate_tax_rate_pct: 29.5
+    royalty_type: "Mining royalty on quarterly net profit"
+    royalty_rate: "1–12% sliding scale on quarterly profit"
+    key_strengths:
+      - Significant gold, silver, copper, zinc endowment
+      - Well-established mining law (Ley General de Minería)
+      - Large skilled mining workforce
+      - Cerro Verde, Las Bambas, Antamina as Tier 1 anchors
+    key_risks:
+      - Persistent community-level conflict (Las Bambas, Conga precedent)
+      - Presidential instability (multiple presidents removed 2017–2022)
+      - Slow social licence processes; road blockades
+      - Water and environmental permit complexity
+    recent_policy_notes: >
+      Boluarte government (post-Castillo impeachment) is broadly pro-mining.
+      Community conflict remains the primary project-level risk, not federal policy.
+      Several new copper projects await permitting in Apurimac/Cajamarca.
+
+  - id: mexico
+    name: Mexico
+    country: Mexico
+    region: North America
+    aliases: ["mexico", "mexican", "sonora", "zacatecas", "durango", "chihuahua", "oaxaca", "sinaloa"]
+    risk_tier: 2
+    risk_level: moderate
+    political_stability: moderate
+    fraser_rank_approx: 52
+    permitting_timeline_months: 24
+    corporate_tax_rate_pct: 30.0
+    royalty_type: "Special Mining Right (2014) + extraordinary royalty"
+    royalty_rate: "7.5% IEPS on profit + 0.5% gross revenues for non-gold, non-silver; gold/silver subject to 0.5% gross"
+    key_strengths:
+      - Major silver (world's largest) and gold producer
+      - Prolific high-grade district (Sinaloa corridor, Sonora)
+      - Relatively fast environmental permitting
+      - Strong in-country mining contractor base
+    key_risks:
+      - AMLO-era reforms: new mining law (2023) enables broader cancellations
+      - Water concession cancellations affected several operations
+      - Security risk in some states (Sinaloa, Guerrero)
+      - Indigenous community consultation (Amparo) growing
+      - Reduced new concession grants since 2021
+    recent_policy_notes: >
+      Mexico's 2023 Mining Law reform significantly tightened rules: water use requires
+      separate permits; indigenous communities can more easily block concessions; term
+      limited to 30 years (from 50). Fresnillo, First Majestic and others publicly cited
+      regulatory uncertainty as a risk factor.
+
+  - id: botswana
+    name: Botswana
+    country: Botswana
+    region: Africa
+    aliases: ["botswana", "batswana", "orapa", "jwaneng", "francistown"]
+    risk_tier: 2
+    risk_level: low
+    political_stability: high
+    fraser_rank_approx: 20
+    permitting_timeline_months: 24
+    corporate_tax_rate_pct: 22.0
+    royalty_type: "Mineral royalty on gross value"
+    royalty_rate: "3–10% gross value depending on mineral"
+    key_strengths:
+      - Most politically stable country in sub-Saharan Africa
+      - Strong diamond sector (Debswana partnership model)
+      - Clear mineral rights framework
+      - Government-business cooperation culture
+      - Emerging copper-silver district (Khoemacau)
+    key_risks:
+      - Single commodity dependence (diamonds) creates budget risk
+      - Small domestic labour pool; skills shortage
+      - Landlocked — logistics costs elevated
+    recent_policy_notes: >
+      Botswana renegotiated its Debswana diamond agreement with De Beers in 2023,
+      securing a larger government share. The government actively promotes copper/nickel
+      exploration diversification.
+
+  - id: namibia
+    name: Namibia
+    country: Namibia
+    region: Africa
+    aliases: ["namibia", "namibian", "swakopmund", "tsumeb", "walvis bay"]
+    risk_tier: 2
+    risk_level: low
+    political_stability: high
+    fraser_rank_approx: 18
+    permitting_timeline_months: 24
+    corporate_tax_rate_pct: 37.5
+    royalty_type: "Royalty on invoiced value of mineral produced"
+    royalty_rate: "3% diamonds; 3% uranium; 0.5–3% base metals; 3% precious metals"
+    key_strengths:
+      - Peaceful, stable democracy
+      - Uranium (Rössing, Husab), diamonds, copper, zinc
+      - Atlantic seaport access (Walvis Bay)
+      - Clear and enforced mineral rights regime
+      - Emerging hydrogen/green energy partner (EU)
+    key_risks:
+      - Relatively high corporate tax rate (37.5%)
+      - Small domestic market; skills shortages
+      - Water scarcity in arid central plateau
+    recent_policy_notes: >
+      Namibia is investing in a Green Hydrogen Roadmap (2022) and positioning itself
+      as a green minerals supplier. Uranium market recovery benefits Husab restart.
+
+  - id: ghana
+    name: Ghana
+    country: Ghana
+    region: Africa
+    aliases: ["ghana", "ghanaian", "ashanti", "accra", "obuasi", "brong-ahafo", "western region ghana"]
+    risk_tier: 2
+    risk_level: moderate
+    political_stability: high
+    fraser_rank_approx: 35
+    permitting_timeline_months: 30
+    corporate_tax_rate_pct: 35.0
+    royalty_type: "Staggered mineral royalty on gross revenues"
+    royalty_rate: "3–5% gross revenues (gold); sliding scale for others"
+    key_strengths:
+      - West Africa's top gold producer
+      - Established mining law (Minerals and Mining Act 2006)
+      - Democratic political system; stable elections
+      - Galiano Gold, AngloGold, Gold Fields long-term operations
+    key_risks:
+      - Galamsey (artisanal mining) encroachment on licensed areas
+      - High corporate tax (35%) + royalty burden
+      - Infrastructure gaps in remote areas
+      - IMF-supported austerity; fiscal pressure may drive royalty increases
+    recent_policy_notes: >
+      Ghana received an IMF bailout in 2023 (US$3bn). Government increased domestic
+      gold purchase requirements. Galamsey crackdowns ongoing but enforcement inconsistent.
+
+  - id: arizona_usa
+    name: Arizona, USA
+    country: United States
+    region: North America
+    aliases: ["arizona", "arizona usa", "az", "us - arizona", "phoenix", "tucson"]
+    risk_tier: 2
+    risk_level: low
+    political_stability: very_high
+    fraser_rank_approx: 8
+    permitting_timeline_months: 36
+    corporate_tax_rate_pct: 21.0
+    royalty_type: "Transaction Privilege Tax; no state production royalty"
+    royalty_rate: "No state royalty (federal 8% gross value applies to federal land)"
+    key_strengths:
+      - Major copper district (Resolution, Bagdall, Ray, Sierrita)
+      - No state production royalty
+      - Strong mining tradition and services sector
+      - Year-round operating conditions
+    key_risks:
+      - Apache Stronghold / Oak Flat controversy (federal mine permit contested)
+      - Water rights disputes in arid south
+      - Federal land withdrawals remain possible
+    recent_policy_notes: >
+      The Oak Flat copper project (Resolution Copper/Rio Tinto) faces ongoing legal
+      challenges from Apache groups over sacred lands. Congressional action possible.
+
+  # ── TIER 3 — Elevated risk (moderate-high) ────────────────────────────────
+
+  - id: south_africa
+    name: South Africa
+    country: South Africa
+    region: Africa
+    aliases: ["south africa", "rsa", "sa", "johannesburg", "witwatersrand", "limpopo", "north west province", "bushveld", "mpumalanga"]
+    risk_tier: 3
+    risk_level: high
+    political_stability: moderate
+    fraser_rank_approx: 60
+    permitting_timeline_months: 48
+    corporate_tax_rate_pct: 28.0
+    royalty_type: "MPRRA royalty — formula-based on EBIT margin"
+    royalty_rate: "0.5–7% gross sales (formula); gold ~1%; platinum ~0.5–1%"
+    key_strengths:
+      - World's largest platinum-group metals endowment (Bushveld)
+      - Deep gold mining expertise
+      - Established capital markets (JSE)
+      - Large skilled and semi-skilled workforce
+    key_risks:
+      - Eskom power constraints severely impact operating costs
+      - Charter obligations (BEE/BBBEE): 30% black ownership requirement
+      - Section 54 safety stoppages — operational disruptions
+      - Infrastructure deterioration (water, roads, rail — Transnet crisis)
+      - Political instability under ANC-GNU coalition
+      - Social unrest in mining communities
+    recent_policy_notes: >
+      2023 revised Mining Charter requires 30% HDSA ownership (previously 26%).
+      Transnet rail crisis has caused billions in lost mineral export revenues.
+      Government introduced a 2-year moratorium on new prospecting rights in certain areas.
+
+  - id: indonesia
+    name: Indonesia
+    country: Indonesia
+    region: Asia-Pacific
+    aliases: ["indonesia", "indonesian", "kalimantan", "sulawesi", "papua new guinea indonesia", "sumatra", "java", "jakarta"]
+    risk_tier: 3
+    risk_level: high
+    political_stability: moderate
+    fraser_rank_approx: 70
+    permitting_timeline_months: 60
+    corporate_tax_rate_pct: 25.0
+    royalty_type: "PNBP royalty on sales value"
+    royalty_rate: "3.75–10% depending on commodity and mine type"
+    key_strengths:
+      - World's largest nickel ore producer (for EV batteries)
+      - Significant copper/gold (Grasberg)
+      - Large domestic market and young workforce
+      - Government prioritising battery-metals value chain
+    key_risks:
+      - 2020 mineral export ban (nickel ore) signals resource nationalism
+      - Domestic processing (smelter) requirement mandatory
+      - Complex IUP (mining permit) system; corruption risk
+      - Artisanal mining conflicts in remote areas
+      - Deforestation and peat-land regulations add compliance burden
+    recent_policy_notes: >
+      Indonesia extended its ban on nickel ore exports and is pursuing a broader
+      ban on bauxite, copper concentrate, and tin smelted products. Foreign ownership
+      restricted to 49% in some categories (Inalum/MIND ID model). Freeport-McMoRan
+      divestment to 49% completed 2019.
+
+  - id: philippines
+    name: Philippines
+    country: Philippines
+    region: Asia-Pacific
+    aliases: ["philippines", "philippine", "manila", "mindanao", "luzon", "visayas", "palawan"]
+    risk_tier: 3
+    risk_level: high
+    political_stability: moderate
+    fraser_rank_approx: 75
+    permitting_timeline_months: 60
+    corporate_tax_rate_pct: 25.0
+    royalty_type: "Excise tax on gross output"
+    royalty_rate: "4% excise tax on gross output of locally extracted minerals"
+    key_strengths:
+      - Large copper-gold-nickel endowment
+      - Young, English-speaking workforce
+      - Established Mineral Production Sharing Agreement (MPSA) framework
+    key_risks:
+      - Executive orders have historically suspended or banned open-pit mining
+      - High political risk — policy reversal between administrations
+      - Environmental regulations enforced unevenly
+      - Typhoon risk for coastal infrastructure
+      - Anti-mining NGO activity
+    recent_policy_notes: >
+      President Marcos Jr lifted the open-pit mining ban in 2021. Some suspensions
+      remain in place. The government is courting mining investment but enforcement
+      and permitting remain unpredictable.
+
+  - id: tanzania
+    name: Tanzania
+    country: Tanzania
+    region: Africa
+    aliases: ["tanzania", "tanzanian", "dar es salaam", "mwanza", "geita", "north mara", "shinyanga"]
+    risk_tier: 3
+    risk_level: high
+    political_stability: moderate
+    fraser_rank_approx: 68
+    permitting_timeline_months: 48
+    corporate_tax_rate_pct: 30.0
+    royalty_type: "Royalty on gross value of minerals"
+    royalty_rate: "4–6% gross value (gold 4%, diamonds 5%, gemstones 5%)"
+    key_strengths:
+      - Major gold producer (Geita, Bulyanhulu, North Mara)
+      - Large untested geological endowment
+      - Active artisanal sector provides geological insight
+    key_risks:
+      - 2017 Magufuli-era resource nationalism: forced renegotiations (Barrick)
+      - Government retains right to 16% free-carry in new licences
+      - Unstable regulatory environment; retrospective changes
+      - Infrastructure gaps outside of major corridors
+    recent_policy_notes: >
+      Tanzania struck a revised agreement with Barrick/Twiga in 2020 granting the
+      government 16% equity and $300M in back taxes. Hassan government (post-Magufuli)
+      is more moderate. New mining regulations 2022 updated documentation requirements.
+
+  - id: brazil
+    name: Brazil
+    country: Brazil
+    region: South America
+    aliases: ["brazil", "brasil", "brazilian", "para", "minas gerais", "goias", "carajas", "amazon"]
+    risk_tier: 3
+    risk_level: moderate
+    political_stability: moderate
+    fraser_rank_approx: 45
+    permitting_timeline_months: 60
+    corporate_tax_rate_pct: 34.0
+    royalty_type: "CFEM financial compensation on gross revenue"
+    royalty_rate: "1.5–4% gross revenue (gold 1.5%, copper 2%, iron ore 3.5%)"
+    key_strengths:
+      - World-class iron ore (Carajás), gold, copper, lithium endowment
+      - Large domestic economy and infrastructure
+      - Vale, Kinross as established operators
+      - Growing lithium/critical mineral focus (Araçuaí, Jequitinhonha Valley)
+    key_risks:
+      - Amazon deforestation rules limit approvals in sensitive biomes
+      - Lula government tightening environmental enforcement (IBAMA)
+      - Indigenous territory demarcation — several projects affected
+      - Slow federal environmental licensing (IBAMA, FUNAI consultations)
+      - High overall tax burden (34% CSLL + IRPJ)
+    recent_policy_notes: >
+      Lula's return (2023) has significantly strengthened environmental enforcement.
+      New demarcation of indigenous territories affects several mining areas.
+      Brazil's lithium sector is growing; Sigma/Lithium and others advancing projects.
+
+  - id: colombia
+    name: Colombia
+    country: Colombia
+    region: South America
+    aliases: ["colombia", "colombian", "bogota", "antioquia", "choco", "cauca", "nariño", "cordillera"]
+    risk_tier: 3
+    risk_level: high
+    political_stability: low
+    fraser_rank_approx: 78
+    permitting_timeline_months: 60
+    corporate_tax_rate_pct: 35.0
+    royalty_type: "Royalty on gross value of production"
+    royalty_rate: "4–12% depending on commodity and production volume"
+    key_strengths:
+      - Large gold endowment (Colombia remains one of world's top 10 producers)
+      - Prospective copper and coal potential
+      - Young geological frontier — limited modern exploration
+    key_risks:
+      - Petro government (2022) declared moratorium on new coal licences
+      - FARC/ELN guerrilla presence in rural mining areas
+      - Community conflict; mandatory consultation with ethnic communities
+      - Petro threatened nationalization of large mines
+      - Overlapping páramo ecosystem prohibitions on water-table areas
+    recent_policy_notes: >
+      President Petro has been openly hostile to fossil fuels and large-scale mining.
+      A moratorium on new gold/coal concessions was proposed but not legislated as of 2023.
+      Security situation is improving in some departments but remains material.
+
+  - id: argentina
+    name: Argentina
+    country: Argentina
+    region: South America
+    aliases: ["argentina", "argentinian", "san juan", "jujuy", "salta", "mendoza", "santa cruz", "rio negro", "lithium triangle argentina"]
+    risk_tier: 3
+    risk_level: high
+    political_stability: moderate
+    fraser_rank_approx: 55
+    permitting_timeline_months: 36
+    corporate_tax_rate_pct: 35.0
+    royalty_type: "Provincial royalty on pithead value"
+    royalty_rate: "3% pithead value (provinces may apply up to 3%)"
+    key_strengths:
+      - Lithium Triangle — world's second-largest lithium brine resource
+      - Veladero, Cerro Negro as established gold operations
+      - Strong geological endowment (Andean Cu-Au porphyry belt)
+      - RIGI large-investment regime introduced 2023 (Milei)
+    key_risks:
+      - Chronic fiscal instability; devaluation risk (FX controls)
+      - Export restrictions and capital controls affect repatriation
+      - Federal vs provincial royalty/taxation ambiguity
+      - Inflation risks capex overruns
+    recent_policy_notes: >
+      Milei government (2024) introduced RIGI (Large Investment Incentive Scheme)
+      offering FX access and tax stability for large investments >US$200M.
+      Capital controls still limit dividend repatriation. Lithium projects (Livent,
+      Allkem merger) advancing rapidly.
+
+  - id: burkina_faso
+    name: Burkina Faso
+    country: Burkina Faso
+    region: Africa
+    aliases: ["burkina faso", "burkina", "ouagadougou", "sahel", "west africa burkina"]
+    risk_tier: 3
+    risk_level: very_high
+    political_stability: very_low
+    fraser_rank_approx: 82
+    permitting_timeline_months: 30
+    corporate_tax_rate_pct: 27.5
+    royalty_type: "Royalty on gross value"
+    royalty_rate: "3–5% gross value"
+    key_strengths:
+      - Active gold mining sector (Houndé, Mana, Wahgnion, Sanbrado)
+      - Relatively fast historical permit issuance
+      - Low cost base when secure
+    key_risks:
+      - Two military coups in 2022; junta government
+      - Active jihadist insurgency (JNIM, ISGS) — mine attacks, road blockades
+      - Government expelled French forces; aligned with Russia/Wagner Group
+      - Semafo attack (2019) killed 37; Orezone, Allied Gold evacuated personnel
+      - Forced partnerships with state entity SOPAMIB
+    recent_policy_notes: >
+      Burkina Faso is in acute security crisis. Multiple operations suspended or
+      restricted. IAMGOLD sold Essakane (2024); multiple juniors exited. Government
+      enacted new mining code requiring larger state equity in 2023.
+
+  # ── TIER 4 — Very high risk ────────────────────────────────────────────────
+
+  - id: drc
+    name: Democratic Republic of Congo
+    country: Democratic Republic of Congo
+    region: Africa
+    aliases: ["drc", "democratic republic of congo", "congo", "drc congo", "kinshasa", "katanga", "lualaba", "kolwezi", "lubumbashi"]
+    risk_tier: 4
+    risk_level: very_high
+    political_stability: very_low
+    fraser_rank_approx: 90
+    permitting_timeline_months: 48
+    corporate_tax_rate_pct: 30.0
+    royalty_type: "Royalty on gross value (Mining Code 2018)"
+    royalty_rate: "3.5% gross value (cobalt/strategic minerals 10%)"
+    key_strengths:
+      - World's largest cobalt reserves (~70% of global supply)
+      - Enormous copper endowment (Copperbelt — Tenke Fungurume, Kamoa-Kakula)
+      - Kamoa-Kakula is a world-class tier-1 copper mine
+      - Coltan (tantalum-niobium) and gold endowment
+    key_risks:
+      - Chronic political instability; armed groups (M23, ADF) in eastern DRC
+      - 2018 Mining Code: royalty increases (copper 3.5%, cobalt 10% strategic)
+      - Artisanal cobalt mining (ASM) — child labour risk; ESG liability
+      - Corruption pervasive — custom duties, permit extortion
+      - Infrastructure largely absent outside Kolwezi corridor
+      - Currency instability (Congolese franc)
+    recent_policy_notes: >
+      DRC declared cobalt a "strategic substance" in 2022, enabling a 10% royalty.
+      Tshisekedi government has been more accessible to foreign investors than Kabila era.
+      ITSCI/RMI ASM traceability programs are investor prerequisites. M23/Rwanda
+      tensions in North Kivu add risk to eastern project corridors.
+
+  - id: zimbabwe
+    name: Zimbabwe
+    country: Zimbabwe
+    region: Africa
+    aliases: ["zimbabwe", "zimbabwean", "harare", "bulawayo", "great dyke", "hwange"]
+    risk_tier: 4
+    risk_level: very_high
+    political_stability: low
+    fraser_rank_approx: 88
+    permitting_timeline_months: 36
+    corporate_tax_rate_pct: 25.0
+    royalty_type: "Royalty on gross value"
+    royalty_rate: "2–15% gross value (gold 5%, platinum 2.5%, chrome 2%)"
+    key_strengths:
+      - World's second-largest platinum-group metal endowment (Great Dyke)
+      - Lithium-rich pegmatites (Bikita, Arcadia)
+      - Large gold endowment; strong artisanal sector
+      - Government has liberalised gold selling (gold bond, RBZ gold coins)
+    key_risks:
+      - ZDERA sanctions legacy; restricted USD financing
+      - Currency instability — ZiG currency; multiple hyperinflation episodes
+      - Mandatory 20% equity to NSSA/parastatals
+      - Land title insecurity (post-2000 precedent)
+      - Mnangagwa government unpredictability
+      - Export bans on raw lithium ore (2023)
+    recent_policy_notes: >
+      Zimbabwe banned raw lithium exports in 2023 requiring domestic processing.
+      Arcadia Lithium project (Huayou JV) is advancing a processing hub.
+      ZDERA sanctions partially eased. Platinum expansion active (Zimplats, Unki, Mimosa).
+
+  - id: venezuela
+    name: Venezuela
+    country: Venezuela
+    region: South America
+    aliases: ["venezuela", "venezuelan", "caracas", "guayana", "orinoco", "bolivar state", "arco minero"]
+    risk_tier: 4
+    risk_level: very_high
+    political_stability: very_low
+    fraser_rank_approx: 97
+    permitting_timeline_months: 60
+    corporate_tax_rate_pct: 34.0
+    royalty_type: "Royalty on gross value; profit-share possible"
+    royalty_rate: "3–6% gross value; subject to negotiation with CVG"
+    key_strengths:
+      - Large untested gold (Arco Minero del Orinoco) and bauxite endowment
+      - Nationalized assets could be acquired at deep discount in transition scenario
+    key_risks:
+      - Maduro regime — US/EU sanctions; USD financing nearly impossible
+      - Nationalisation risk — every large foreign mining venture has been expropriated
+      - Hyperinflation and complete infrastructure collapse
+      - Illegal mining and armed-group presence throughout Bolívar state
+      - Environmental destruction; ESG liability (Arco Minero deforestation)
+    recent_policy_notes: >
+      US sanctions were temporarily eased in late 2023 (electoral deal) then
+      reimposed after Maduro election fraud. No viable large-scale Western mining
+      investment pathway currently exists.
+
+  - id: guinea
+    name: Guinea (Conakry)
+    country: Guinea
+    region: Africa
+    aliases: ["guinea", "guinea conakry", "conakry", "simandou", "boke", "fria", "west africa guinea"]
+    risk_tier: 3
+    risk_level: high
+    political_stability: low
+    fraser_rank_approx: 72
+    permitting_timeline_months: 48
+    corporate_tax_rate_pct: 35.0
+    royalty_type: "Royalty on exports"
+    royalty_rate: "0.075% bauxite; 0.5–3% other minerals"
+    key_strengths:
+      - World's largest bauxite reserves; major iron ore (Simandou)
+      - Simandou iron ore deposit — potentially world's largest high-grade deposit
+      - Rio Tinto, SMB-Winning, Chalco / AIASL advancing projects
+    key_risks:
+      - Military junta since 2021 coup (CNRD / Mamadi Doumbouya)
+      - Retrospective renegotiation of Rio Tinto/SMB Simandou agreements
+      - Corruption risk; opaque licensing
+      - Infrastructure absent in interior — Simandou requires 650km rail
+    recent_policy_notes: >
+      Guinea junta renegotiated Simandou concession terms in 2023, securing larger
+      Guinean state equity. Simandou first ore production targeted 2025–2026.
+      BSGR Simandou arbitration (settled) highlights contract risk.
+
+  - id: mali
+    name: Mali
+    country: Mali
+    region: Africa
+    aliases: ["mali", "malian", "bamako", "kayes", "koulikoro", "sikasso", "kidal", "loulo", "gounkoto", "syama", "morila"]
+    risk_tier: 4
+    risk_level: very_high
+    political_stability: very_low
+    fraser_rank_approx: 86
+    permitting_timeline_months: 36
+    corporate_tax_rate_pct: 35.0
+    royalty_type: "Royalty on gold"
+    royalty_rate: "3–6% gross revenue sliding scale (2023 Mining Code)"
+    key_strengths:
+      - Significant gold endowment (Loulo-Gounkoto, Syama, Fekola)
+      - Barrick, Allied, Resolute long-term producers
+      - Historical low-cost production
+    key_risks:
+      - Two military coups (2020, 2021) — junta government (CNSP)
+      - Expelled French/Minusma forces; Wagner Group security presence
+      - 2023: Mali seized Barrick's Loulo-Gounkoto complex; three employees detained
+      - Jihadist insurgency (JNIM) — northern Mali effectively ungoverned
+      - New Mining Code 2023 requires larger state equity and higher royalties
+      - Travel advisories: no-go for most Western staff
+    recent_policy_notes: >
+      Critical: Mali's junta detained Barrick employees and suspended Loulo-Gounkoto in
+      late 2023 over a $500M back-tax dispute. Resolute Mining's CEO was also briefly
+      detained in September 2024. Jurisdiction effectively uninvestable for Western juniors.
+
+  - id: ecuador
+    name: Ecuador
+    country: Ecuador
+    region: South America
+    aliases: ["ecuador", "ecuadorian", "quito", "cordillera del condor", "intza", "shuar territory", "azuay"]
+    risk_tier: 3
+    risk_level: high
+    political_stability: low
+    fraser_rank_approx: 65
+    permitting_timeline_months: 48
+    corporate_tax_rate_pct: 25.0
+    royalty_type: "Royalty on net profit above threshold"
+    royalty_rate: "5% on net profit; + 3% for windfall profit"
+    key_strengths:
+      - Emerging large-scale copper-gold belt (Fruta del Norte, Mirador)
+      - Lundin Gold (FDN) operating; SolGold advancing Cascabel
+      - Government supportive of large-scale projects post-Correa
+    key_risks:
+      - Constitutional court rulings suspended Cascabel and other projects (2023)
+      - Indigenous Shuar/Kichwa FPIC requirements — legally powerful
+      - Security deterioration (cartel infiltration post-2022)
+      - Referendum questions on mining in sensitive areas
+    recent_policy_notes: >
+      Constitutional Court ruled in 2023 that Yasuni ITT referendum result applies
+      to oil only, but environmental groups are pursuing similar rulings for mining.
+      Codelco (Chile) Cascabel investment stalled pending consultation.
+
+  - id: nevada_canada_nunavut
+    name: Nunavut, Canada
+    country: Canada
+    region: North America
+    aliases: ["nunavut", "nunavut canada", "baffin island", "rankin inlet", "kivalliq", "qikiqtaaluk", "meadowbank", "hope bay", "meliadine"]
+    risk_tier: 2
+    risk_level: moderate
+    political_stability: high
+    fraser_rank_approx: 20
+    permitting_timeline_months: 60
+    corporate_tax_rate_pct: 26.5
+    royalty_type: "Nunavut mining royalty"
+    royalty_rate: "12% on profits (territorial + federal) above threshold"
+    key_strengths:
+      - Major gold discoveries (Meadowbank, Meliadine, Hope Bay)
+      - Stable Canadian jurisdiction; federal rule of law
+      - Agnico Eagle established operator; strong Inuit partnerships
+      - Growing Inuit government relations expertise
+    key_risks:
+      - Very remote — fly-in-fly-out only; extreme logistical costs
+      - Arctic weather: short operating season (some sites)
+      - Nunavut Impact Review Board — thorough process
+      - Inuit Qaujimajatuqangit consultation obligation
+      - Long permitting: NIRB + INAC > 5 years typical
+    recent_policy_notes: >
+      Agnico Eagle has the strongest community relationships in the territory.
+      Federal government signed Nunavut Agreement amendments strengthening Inuit
+      review rights. Climate change is opening some areas while increasing others' risk.
+
+  - id: mongolia
+    name: Mongolia
+    country: Mongolia
+    region: Asia-Pacific
+    aliases: ["mongolia", "mongolian", "ulaanbaatar", "gobi", "oyu tolgoi", "erdenes tavan tolgoi", "south gobi"]
+    risk_tier: 3
+    risk_level: high
+    political_stability: moderate
+    fraser_rank_approx: 62
+    permitting_timeline_months: 36
+    corporate_tax_rate_pct: 25.0
+    royalty_type: "Royalty on gross revenue"
+    royalty_rate: "5% gross revenue minerals; 2.5% coal"
+    key_strengths:
+      - Oyu Tolgoi — world-class copper-gold-molybdenum (Rio Tinto/Turquoise Hill)
+      - Tavan Tolgoi — one of world's largest coking-coal deposits
+      - Strong geological prospectivity; undiscovered endowment
+    key_risks:
+      - 2012 strategic mineral designation of OT required large renegotiation
+      - Government imposed windfall profit tax; later repealed
+      - Landlocked between Russia and China — dependent on both
+      - 2022 Oyu Tolgoi underground ramp-up delayed ~2 years by disputes
+      - Parliamentary instability
+    recent_policy_notes: >
+      Rio Tinto resolved the Oyu Tolgoi underground financing dispute in 2023.
+      Turquoise Hill minority shareholders were bought out. OT underground reached
+      sustained production in 2023 — a turning point for the jurisdiction's credibility.
+
+  - id: morocco
+    name: Morocco
+    country: Morocco
+    region: Africa
+    aliases: ["morocco", "moroccan", "maroc", "rabat", "casablanca", "khouribga", "laayoune", "bou craa", "north africa morocco"]
+    risk_tier: 2
+    risk_level: moderate
+    political_stability: high
+    fraser_rank_approx: 28
+    permitting_timeline_months: 24
+    corporate_tax_rate_pct: 31.0
+    royalty_type: "Royalty on gross value"
+    royalty_rate: "3% gross value (phosphates exempt — OCP state monopoly)"
+    key_strengths:
+      - World's largest phosphate reserves (OCP Group)
+      - Stable monarchy; transparent mineral administration (ONHYM)
+      - Atlantic access; EU partnership
+      - Growing base metal and critical mineral interest
+    key_risks:
+      - OCP monopoly limits third-party phosphate access
+      - Western Sahara sovereignty dispute (UN-unresolved)
+      - High cost of energy — diesel-dependent operations
+    recent_policy_notes: >
+      Morocco signed a critical minerals MOU with the EU in 2023. US recognition of
+      Moroccan sovereignty over Western Sahara (2020) reduced geopolitical risk for
+      Bou Craa phosphate operations.
+
+  - id: ireland
+    name: Ireland
+    country: Ireland
+    region: Europe
+    aliases: ["ireland", "irish", "republic of ireland", "dublin", "tipperary", "limerick", "leinster"]
+    risk_tier: 1
+    risk_level: low
+    political_stability: very_high
+    fraser_rank_approx: 12
+    permitting_timeline_months: 36
+    corporate_tax_rate_pct: 12.5
+    royalty_type: "No mining royalty; State takes equity interest by agreement"
+    royalty_rate: "No statutory royalty"
+    key_strengths:
+      - Very low corporate tax (12.5%)
+      - No statutory royalty on mine production
+      - EU member; strong rule of law
+      - Navan Mine — one of Europe's last producing zinc-lead mines (Boliden)
+      - Prospective Irish Midlands carbonate-hosted zinc belt
+    key_risks:
+      - Small jurisdiction with limited new discoveries
+      - Public resistance to new open-pit development
+      - State retains option to acquire equity in large discoveries
+    recent_policy_notes: >
+      Ireland's Planning and Development Bill (2024) may shorten permit review times.
+      Glencore Pallas Green and Boliden Tara remain the only significant producing operations.
+
+  - id: greenland
+    name: Greenland
+    country: Greenland
+    region: North America
+    aliases: ["greenland", "greenlandic", "nuuk", "kangerlussuaq", "kvanefjeld", "citronen fjord", "isua"]
+    risk_tier: 3
+    risk_level: high
+    political_stability: moderate
+    fraser_rank_approx: 48
+    permitting_timeline_months: 48
+    corporate_tax_rate_pct: 31.8
+    royalty_type: "Royalty on net profit above threshold"
+    royalty_rate: "2.5% gross value; 7.5% net profit above cost recovery"
+    key_strengths:
+      - World-class rare earth (Kvanefjeld/Tanbreez), iron ore, zinc endowment
+      - Danish rule-of-law framework; transparent governance
+      - Autonomous government keen to diversify from fishing
+    key_risks:
+      - Inatsisartut elected government banned uranium mining (2021) — kills Kvanefjeld REE project
+      - Extreme Arctic logistics — ice-free season limited
+      - Very small population — zero domestic labour pool
+      - Self-governance transition introduces policy uncertainty
+    recent_policy_notes: >
+      The uranium ban passed in 2021 killed the Kvanefjeld rare-earth project (since renamed Tanbreez).
+      New operator (Critical Metals Corp) exploring uranium-free processing pathway.
+      Greenland is caught between US and EU critical mineral strategies.

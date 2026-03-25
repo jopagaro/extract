@@ -6,6 +6,7 @@ export interface Project {
   description?: string;
   commodity?: string;
   study_type: "PEA" | "PFS" | "FS" | "scoping" | "other";
+  ticker?: string | null;
   created_at: string;
   status: "empty" | "ingested" | "analyzed" | "error";
   file_count: number;
@@ -58,4 +59,134 @@ export interface ReportContent {
 export interface AppSettings {
   openai_api_key?: string;
   anthropic_api_key?: string;
+}
+
+export type RoyaltyType = "NSR" | "GR" | "NPI" | "Stream" | "Sliding NSR" | "Production" | "Other";
+
+export interface Royalty {
+  royalty_id: string;
+  royalty_type: RoyaltyType;
+  holder: string;
+  rate_pct?: number | null;
+  metals_covered?: string | null;
+  area_covered?: string | null;
+  stream_pct?: number | null;
+  stream_purchase_price?: number | null;
+  stream_purchase_unit?: string | null;
+  sliding_scale_notes?: string | null;
+  production_rate?: number | null;
+  production_unit?: string | null;
+  buyback_option: boolean;
+  buyback_price_musd?: number | null;
+  recorded_instrument?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RoyaltyWarning {
+  level: "critical" | "caution" | "info";
+  message: string;
+}
+
+export interface RoyaltySummary {
+  project_id: string;
+  total_agreements: number;
+  nsr_equivalent_pct?: number | null;
+  has_stream: boolean;
+  has_npi: boolean;
+  holders: string[];
+  metals_affected: string[];
+  buyback_options: number;
+  warnings: RoyaltyWarning[];
+}
+
+export interface ResourceRow {
+  row_id: string;
+  classification: "Measured" | "Indicated" | "Inferred";
+  domain?: string | null;
+  tonnage_mt?: number | null;
+  grade_value?: number | null;
+  grade_unit?: string | null;
+  contained_metal?: number | null;
+  metal_unit?: string | null;
+  cut_off_grade?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ResourceWarning {
+  level: "critical" | "caution" | "info";
+  message: string;
+}
+
+export interface ResourceSummary {
+  project_id: string;
+  total_tonnage_mt?: number | null;
+  measured_mt?: number | null;
+  indicated_mt?: number | null;
+  inferred_mt?: number | null;
+  inferred_pct?: number | null;
+  metal_unit?: string | null;
+  total_contained?: number | null;
+  measured_indicated_contained?: number | null;
+  inferred_contained?: number | null;
+  warnings: ResourceWarning[];
+}
+
+export interface Comparable {
+  comp_id: string;
+  project_name: string;
+  acquirer?: string | null;
+  seller?: string | null;
+  commodity?: string | null;
+  transaction_date?: string | null;
+  transaction_value_musd?: number | null;
+  resource_moz_or_mlb?: number | null;
+  price_per_unit_usd?: number | null;
+  study_stage?: string | null;
+  jurisdiction?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Note {
+  note_id: string;
+  content: string;
+  tag?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type NewsCategory =
+  | "resource_update" | "financing" | "permitting" | "acquisition"
+  | "production" | "management" | "esg" | "market" | "other";
+
+export interface NewsItem {
+  news_id: string;
+  headline: string;
+  date: string;
+  source: string;
+  url?: string | null;
+  summary: string;
+  category: NewsCategory;
+  sentiment: "positive" | "negative" | "neutral";
+  relevance: "high" | "medium" | "low";
+  tags: string[];
+}
+
+export interface NewsFeed {
+  fetched_at: string;
+  project_name: string;
+  commodity: string;
+  jurisdiction?: string | null;
+  items: NewsItem[];
+  error?: string | null;
+}
+
+export interface PortfolioNewsItem extends NewsItem {
+  project_id: string;
+  project_name: string;
 }

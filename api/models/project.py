@@ -15,12 +15,18 @@ class ProjectCreate(BaseModel):
     study_type: Literal["PEA", "PFS", "FS", "scoping", "other"] = "PEA"
 
 
+class ProjectUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=120)
+    ticker: str | None = Field(None, max_length=12, description="Exchange ticker symbol, e.g. ABX, NEM")
+
+
 class ProjectResponse(BaseModel):
     id: str
     name: str
     description: str | None = None
     commodity: str | None = None
     study_type: str
+    ticker: str | None = None
     created_at: str
     status: Literal["empty", "ingested", "analyzed", "error"] = "empty"
     file_count: int = 0
