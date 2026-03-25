@@ -8,16 +8,11 @@ Search strategy (tiered):
   1. Project-specific search  — project name + operator + jurisdiction
   2. Jurisdiction + commodity  — if tier-1 returns < 3 items, broaden to
                                   regional mining news for the same commodity
-  3. Commodity market          — if still sparse, add broad commodity news
-     (gold, copper, etc.)
-
-This ensures the feed always has something useful even for unknown or
-fictitious project names.
+  3. Always returns something useful even for unknown project names.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -67,107 +62,114 @@ def _call_search_model(client, prompt: str) -> str:
                 ],
                 max_tokens=2000,
             )
-            content = resp.choices[0].message.content or ""
-            return f"[TRAINING DATA ONLY — not real-time]\n\n{content}"
+            return resp.choices[0].message.content or ""
         except Exception as fallback_exc:
             raise RuntimeError(
                 f"Both search and fallback failed: {primary_exc}; {fallback_exc}"
             ) from fallback_exc
 
 
-def _extract_json(raw: str) -> str | None:
+def _extract_json_object(text: str) -> str | None:
     """
-    Try multiple strategies to extract a JSON string from a model response.
-    Returns the raw JSON string if found, None otherwise.
+    Find the first complete JSON object or array in text using bracket matching.
+    This is robust against prose before/after the JSON and nested arrays.
     """
-    # 1. Strip markdown fences
-    cleaned = re.sub(r'^```(?:json)?\s*', '', raw.strip(), flags=re.MULTILINE)
-    cleaned = re.sub(r'```\s*$', '', cleaned.strip(), flags=re.MULTILINE)
-    cleaned = cleaned.strip()
+    # Strip markdown fences first
+    cleaned = re.sub(r'```(?:json)?\s*', '', text)
+    cleaned = re.sub(r'```', '', cleaned).strip()
 
-    # 2. Try the whole cleaned string first
-    for candidate in [cleaned, raw.strip()]:
-        try:
-            json.loads(candidate)
-            return candidate
-        except (json.JSONDecodeError, ValueError):
-            pass
+    # Try the whole cleaned string first (ideal case: model returned pure JSON)
+    try:
+        json.loads(cleaned)
+        return cleaned
+    except (json.JSONDecodeError, ValueError):
+        pass
 
-    # 3. Try to find {"items": [...]} object
-    m = re.search(r'\{\s*"items"\s*:\s*\[[\s\S]*?\]\s*\}', cleaned)
-    if m:
-        return m.group()
-
-    # 4. Try any top-level JSON object
-    m = re.search(r'\{[\s\S]+\}', cleaned)
-    if m:
-        try:
-            json.loads(m.group())
-            return m.group()
-        except (json.JSONDecodeError, ValueError):
-            pass
-
-    # 5. Try any JSON array
-    m = re.search(r'\[[\s\S]+\]', cleaned)
-    if m:
-        try:
-            json.loads(m.group())
-            return m.group()
-        except (json.JSONDecodeError, ValueError):
-            pass
+    # Walk character by character to find a valid JSON object or array
+    for start_char, end_char in [('{', '}'), ('[', ']')]:
+        pos = cleaned.find(start_char)
+        while pos != -1:
+            depth = 0
+            in_str = False
+            escape = False
+            for i in range(pos, len(cleaned)):
+                ch = cleaned[i]
+                if escape:
+                    escape = False
+                    continue
+                if ch == '\\' and in_str:
+                    escape = True
+                    continue
+                if ch == '"':
+                    in_str = not in_str
+                    continue
+                if in_str:
+                    continue
+                if ch == start_char:
+                    depth += 1
+                elif ch == end_char:
+                    depth -= 1
+                    if depth == 0:
+                        candidate = cleaned[pos:i+1]
+                        try:
+                            json.loads(candidate)
+                            return candidate
+                        except (json.JSONDecodeError, ValueError):
+                            break  # This start position didn't work, try next
+            pos = cleaned.find(start_char, pos + 1)
 
     return None
 
 
 def _parse_news_items(
     raw: str,
-    fallback_headline: str,
-    commodity: str,
     default_relevance: str = "medium",
 ) -> list[dict]:
     """
     Extract a list of structured news items from the model's raw text response.
-    Falls back to an empty list (not a prose blob) so callers can handle missing data cleanly.
+    Returns an empty list if nothing parseable is found.
     """
-    json_str = _extract_json(raw)
-    if json_str:
-        try:
-            parsed = json.loads(json_str)
-            items = parsed if isinstance(parsed, list) else parsed.get("items", [])
-            normalised: list[dict] = []
-            for i, item in enumerate(items):
-                if not isinstance(item, dict):
-                    continue
-                relevance = item.get("relevance")
-                if relevance not in RELEVANCES:
-                    relevance = default_relevance
-                normalised.append({
-                    "news_id":   item.get("news_id") or f"N{i+1:03d}",
-                    "headline":  str(item.get("headline") or "Untitled"),
-                    "date":      str(item.get("date") or ""),
-                    "source":    str(item.get("source") or ""),
-                    "url":       item.get("url") or None,
-                    "summary":   str(item.get("summary") or ""),
-                    "category":  item.get("category") if item.get("category") in NEWS_CATEGORIES else "other",
-                    "sentiment": item.get("sentiment") if item.get("sentiment") in SENTIMENTS else "neutral",
-                    "relevance": relevance,
-                    "tags":      item.get("tags") if isinstance(item.get("tags"), list) else [],
-                })
-            if normalised:
-                return normalised
-        except (json.JSONDecodeError, TypeError):
-            pass
+    json_str = _extract_json_object(raw)
+    if not json_str:
+        logger.warning("Could not find JSON in model response (len=%d, preview=%r)",
+                       len(raw), raw[:120])
+        return []
 
-    # If the model returned prose (not JSON), return empty — the tier logic
-    # will fall through to context search rather than showing a JSON blob.
-    logger.warning("Could not parse news JSON from model response (len=%d)", len(raw))
-    return []
+    try:
+        parsed = json.loads(json_str)
+        items = parsed if isinstance(parsed, list) else parsed.get("items", [])
+        if not isinstance(items, list):
+            return []
+
+        normalised: list[dict] = []
+        for i, item in enumerate(items):
+            if not isinstance(item, dict):
+                continue
+            relevance = item.get("relevance")
+            if relevance not in RELEVANCES:
+                relevance = default_relevance
+            normalised.append({
+                "news_id":   item.get("news_id") or f"N{i+1:03d}",
+                "headline":  str(item.get("headline") or "Untitled"),
+                "date":      str(item.get("date") or ""),
+                "source":    str(item.get("source") or ""),
+                "url":       item.get("url") or None,
+                "summary":   str(item.get("summary") or ""),
+                "category":  item.get("category") if item.get("category") in NEWS_CATEGORIES else "other",
+                "sentiment": item.get("sentiment") if item.get("sentiment") in SENTIMENTS else "neutral",
+                "relevance": relevance,
+                "tags":      item.get("tags") if isinstance(item.get("tags"), list) else [],
+            })
+        return normalised
+
+    except (json.JSONDecodeError, TypeError) as exc:
+        logger.warning("JSON parse error: %s", exc)
+        return []
 
 
 def _is_sparse(items: list[dict]) -> bool:
-    """True if the item list has fewer than 3 real (non-summary) entries."""
-    real = [i for i in items if not i.get("headline", "").endswith("— recent developments")]
-    return len(real) < 3
+    """True if the list has fewer than 3 genuine items."""
+    return len(items) < 3
 
 
 def _dedupe(items: list[dict]) -> list[dict]:
@@ -217,33 +219,19 @@ Find up to {max_items} individual news items from the past 18 months covering:
 - Drilling results and exploration activity
 - Permitting approvals or regulatory filings
 - Financing rounds, equity offerings, debt facilities
-- Acquisitions, mergers, joint ventures, royalty/stream deals
+- Acquisitions, mergers, joint ventures
 - Production updates, commissioning milestones
 - Management changes
-- ESG, environmental, or community developments
-- Market or analyst commentary specific to this project/company
+- ESG or community developments
+- Market or analyst commentary
 
-Return a JSON object with this exact structure and nothing else:
+You MUST respond with ONLY a valid JSON object. No prose, no markdown, no explanation.
+The JSON must have this exact structure:
 
-{{
-  "items": [
-    {{
-      "news_id": "N001",
-      "headline": "string — concise, 10 words max",
-      "date": "YYYY-MM-DD or approximate e.g. 'March 2026'",
-      "source": "publication or newswire name",
-      "url": "URL if known, otherwise null",
-      "summary": "2–3 sentence summary",
-      "category": "resource_update | financing | permitting | acquisition | production | management | esg | market | other",
-      "sentiment": "positive | negative | neutral",
-      "relevance": "high | medium | low",
-      "tags": ["tag1", "tag2"]
-    }}
-  ]
-}}
+{{"items": [{{"news_id": "N001", "headline": "string max 10 words", "date": "YYYY-MM-DD", "source": "publication name", "url": "URL or null", "summary": "2-3 sentence summary", "category": "resource_update|financing|permitting|acquisition|production|management|esg|market|other", "sentiment": "positive|negative|neutral", "relevance": "high|medium|low", "tags": ["tag1"]}}]}}
 
-If you cannot find any specific news for this project, return an empty items array: {{"items": []}}
-Return only the JSON object — no markdown fences, no preamble."""
+If no specific news exists for this project, return: {{"items": []}}
+IMPORTANT: Return ONLY the JSON object. Nothing else."""
 
 
 def _context_prompt(
@@ -252,7 +240,6 @@ def _context_prompt(
     today: str,
     max_items: int,
 ) -> str:
-    """Broader fallback: jurisdiction + commodity mining news."""
     scope = f"{jurisdiction} {commodity}" if jurisdiction else commodity
     return f"""Today is {today}.
 
@@ -260,39 +247,23 @@ Search for the most recent mining industry news relevant to {scope} mining.
 
 Find up to {max_items} news items from the past 12 months covering:
 - Major project announcements or discoveries in {jurisdiction or "the region"}
-- Regulatory changes, permitting updates, or policy developments affecting {commodity} mining
-- {commodity} commodity price movements, forecasts, and analyst commentary
-- Significant M&A, royalty deals, or financings in the {commodity} mining sector
-- Technology or processing developments relevant to {commodity} extraction
+- Regulatory changes or policy developments affecting {commodity} mining
+- {commodity} price movements, forecasts, and analyst commentary
+- Significant M&A or financings in the {commodity} mining sector
 
-Return a JSON object with this exact structure and nothing else:
+You MUST respond with ONLY a valid JSON object. No prose, no markdown, no explanation.
 
-{{
-  "items": [
-    {{
-      "news_id": "N001",
-      "headline": "string — concise, 10 words max",
-      "date": "YYYY-MM-DD or approximate",
-      "source": "publication or newswire name",
-      "url": "URL if known, otherwise null",
-      "summary": "2–3 sentence summary",
-      "category": "resource_update | financing | permitting | acquisition | production | management | esg | market | other",
-      "sentiment": "positive | negative | neutral",
-      "relevance": "low",
-      "tags": ["tag1", "tag2"]
-    }}
-  ]
-}}
+{{"items": [{{"news_id": "N001", "headline": "string max 10 words", "date": "YYYY-MM-DD", "source": "publication name", "url": "URL or null", "summary": "2-3 sentence summary", "category": "resource_update|financing|permitting|acquisition|production|management|esg|market|other", "sentiment": "positive|negative|neutral", "relevance": "low", "tags": ["tag1"]}}]}}
 
-Set relevance to "low" for all items — these are sector/regional context, not project-specific.
-Return only the JSON object — no markdown fences, no preamble."""
+Set relevance to "low" for all items.
+IMPORTANT: Return ONLY the JSON object. Nothing else."""
 
 
 # ---------------------------------------------------------------------------
-# Main entry point
+# Main entry point  (sync — called directly from FastAPI sync endpoint)
 # ---------------------------------------------------------------------------
 
-async def fetch_project_news(
+def fetch_project_news_sync(
     project_name: str,
     operator:     str | None,
     commodity:    str,
@@ -301,9 +272,9 @@ async def fetch_project_news(
     max_items: int = 15,
 ) -> dict[str, Any]:
     """
-    Fetch structured recent news for a mining project.
+    Fetch structured recent news for a mining project (synchronous version).
 
-    Returns a news-feed dict:
+    Returns:
         {
             "fetched_at":    ISO timestamp,
             "project_name":  str,
@@ -323,47 +294,34 @@ async def fetch_project_news(
     today  = datetime.now(timezone.utc).strftime("%B %d, %Y")
 
     # ── Tier 1: project-specific search ──────────────────────────────────────
+    project_items: list[dict] = []
     try:
-        raw1 = await asyncio.to_thread(
-            _call_search_model, client,
+        raw1 = _call_search_model(
+            client,
             _project_prompt(project_name, operator, commodity, jurisdiction, today, max_items),
         )
-        project_items = _parse_news_items(
-            raw1,
-            fallback_headline=f"{project_name} — recent developments",
-            commodity=commodity,
-            default_relevance="high",
-        )
+        project_items = _parse_news_items(raw1, default_relevance="high")
+        logger.info("Tier-1 returned %d items for '%s'", len(project_items), project_name)
     except Exception as exc:
-        logger.error("Tier-1 news search failed for %s: %s", project_name, exc)
-        project_items = []
+        logger.error("Tier-1 news search failed: %s", exc)
 
-    # ── Tier 2: jurisdiction + commodity context (always run in parallel) ────
-    # Run the context search regardless so we can merge it if tier-1 is sparse
+    # ── Tier 2: jurisdiction + commodity context ───────────────────────────
     context_items: list[dict] = []
     if commodity or jurisdiction:
         try:
-            raw2 = await asyncio.to_thread(
-                _call_search_model, client,
+            raw2 = _call_search_model(
+                client,
                 _context_prompt(commodity, jurisdiction, today, max_items),
             )
-            context_items = _parse_news_items(
-                raw2,
-                fallback_headline=f"{commodity} mining sector — recent developments",
-                commodity=commodity,
-                default_relevance="low",
-            )
+            context_items = _parse_news_items(raw2, default_relevance="low")
+            logger.info("Tier-2 returned %d context items", len(context_items))
         except Exception as exc:
             logger.warning("Tier-2 context search failed: %s", exc)
 
     # ── Merge ─────────────────────────────────────────────────────────────────
-    # If tier-1 produced real project-specific items, show those first and
-    # append context items as background colour.
-    # If tier-1 came up empty, context items are the main feed.
     if _is_sparse(project_items):
         combined = project_items + context_items
     else:
-        # Cap context items to avoid drowning out project news
         combined = project_items + context_items[:5]
 
     combined = _dedupe(combined)
@@ -383,6 +341,24 @@ async def fetch_project_news(
         "items":        combined[:max_items],
         "error":        None,
     }
+
+
+# Keep async wrapper for any callers that use it
+async def fetch_project_news(
+    project_name: str,
+    operator:     str | None,
+    commodity:    str,
+    jurisdiction: str | None,
+    *,
+    max_items: int = 15,
+) -> dict[str, Any]:
+    """Async wrapper around fetch_project_news_sync."""
+    import asyncio
+    return await asyncio.to_thread(
+        fetch_project_news_sync,
+        project_name, operator, commodity, jurisdiction,
+        max_items=max_items,
+    )
 
 
 def _error_feed(

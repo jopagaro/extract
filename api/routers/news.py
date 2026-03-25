@@ -170,15 +170,13 @@ def refresh_news(project_id: str) -> NewsFeed:
     _project_exists(project_id)
     identity = _get_project_identity(project_id)
 
-    from engine.market.fetch_project_news import fetch_project_news
+    from engine.market.fetch_project_news import fetch_project_news_sync
 
-    feed_data = asyncio.run(
-        fetch_project_news(
-            project_name=identity["project_name"],
-            operator=identity["operator"],
-            commodity=identity["commodity"],
-            jurisdiction=identity["jurisdiction"],
-        )
+    feed_data = fetch_project_news_sync(
+        project_name=identity["project_name"],
+        operator=identity["operator"],
+        commodity=identity["commodity"],
+        jurisdiction=identity["jurisdiction"],
     )
 
     _save_feed(project_id, feed_data)
