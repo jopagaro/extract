@@ -16,9 +16,11 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel
 
 from api.models.ingest_request import FileList, FileRecord, IngestResponse
 from engine.core.paths import project_root
+from engine.ingest.url_fetcher import fetch_url_as_text
 
 router = APIRouter(prefix="/projects/{project_id}/files", tags=["ingest"])
 
@@ -157,3 +159,80 @@ def delete_file(project_id: str, filename: str) -> None:
     registry = _load_registry(project_id)
     registry.pop(filename, None)
     _save_registry(project_id, registry)
+
+
+# ---------------------------------------------------------------------------
+# URL ingestion — separate router so the path is /projects/{id}/ingest/url
+# ---------------------------------------------------------------------------
+
+url_router = APIRouter(prefix="/projects/{project_id}/ingest", tags=["ingest"])
+
+
+class UrlIngestRequest(BaseModel):
+    url: str
+
+
+class UrlIngestResponse(BaseModel):
+    project_id: str
+    filename: str
+    url: str
+    size_bytes: int
+    status: str
+    error: str | None = None
+
+
+@url_router.post("/url", response_model=UrlIngestResponse, status_code=202)
+def ingest_url(project_id: str, body: UrlIngestRequest) -> UrlIngestResponse:
+    """
+    Fetch a public URL (press release, news article, company page) and save
+    it as a plain-text source document in the project library.
+
+    The page is cleaned of navigation, ads, and scripts — only the main
+    readable content is kept. Triggers no analysis; run /analyze separately.
+    """
+    _project_exists(project_id)
+    dest_dir = project_root(project_id) / "raw" / "documents"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    url = str(body.url).strip()
+
+    try:
+        text, filename = fetch_url_as_text(url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch URL: {exc}")
+
+    # If a file with this name already exists, append a counter
+    dest_file = dest_dir / filename
+    if dest_file.exists():
+        stem = Path(filename).stem
+        counter = 2
+        while dest_file.exists():
+            dest_file = dest_dir / f"{stem}_{counter}.txt"
+            counter += 1
+        filename = dest_file.name
+
+    dest_file.write_text(text, encoding="utf-8")
+    size = len(text.encode("utf-8"))
+
+    registry = _load_registry(project_id)
+    registry[filename] = {
+        "filename": filename,
+        "path": str(dest_file),
+        "size_bytes": size,
+        "mime_type": "text/plain",
+        "source_url": url,
+        "ingested": False,
+        "ingested_at": None,
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _save_registry(project_id, registry)
+
+    return UrlIngestResponse(
+        project_id=project_id,
+        filename=filename,
+        url=url,
+        size_bytes=size,
+        status="queued",
+    )

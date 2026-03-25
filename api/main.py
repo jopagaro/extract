@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routers import activate, analyze, export, ingest, projects, reports, settings
+from api.routers.ingest import url_router
 from api.routers.settings import load_and_apply_settings
 
 # Apply saved API keys to env before anything else loads
@@ -34,6 +35,7 @@ app.add_middleware(
 # Register all routers
 app.include_router(projects.router)
 app.include_router(ingest.router)
+app.include_router(url_router)
 app.include_router(analyze.router)
 app.include_router(reports.router)
 app.include_router(export.router)
