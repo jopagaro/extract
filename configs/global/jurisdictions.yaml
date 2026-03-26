@@ -132,6 +132,213 @@ jurisdictions:
       Ontario's Critical Minerals Strategy (2022) streamlines critical-mineral permitting.
       The province is actively accelerating Ring of Fire (chromite/nickel) reviews.
 
+  - id: saskatchewan_canada
+    name: Saskatchewan, Canada
+    country: Canada
+    region: North America
+    aliases: ["saskatchewan", "sk", "canada - saskatchewan", "athabasca basin", "uranium city", "la ronge"]
+    risk_tier: 1
+    risk_level: low
+    political_stability: very_high
+    fraser_rank_approx: 5
+    permitting_timeline_months: 30
+    corporate_tax_rate_pct: 27.0
+    royalty_type: "Crown mineral royalty (uranium); potash tax"
+    royalty_rate: "Uranium: graduated royalty on production value; Potash: graduated potash production tax"
+    key_strengths:
+      - World's highest-grade uranium district (Athabasca Basin)
+      - Stable, pro-mining regulatory environment
+      - Strong First Nations partnership frameworks (Impact Benefit Agreements)
+      - Excellent infrastructure in southern and central Saskatchewan
+    key_risks:
+      - Remote northern terrain increases capital costs
+      - Uranium-specific regulatory complexity (Canadian Nuclear Safety Commission)
+      - Water licensing can be protracted for large operations
+    recent_policy_notes: >
+      Saskatchewan maintains a strong pro-mining stance. The Athabasca Basin
+      remains the global benchmark for uranium projects. Province has streamlined
+      critical mineral permitting under its Critical Mineral Strategy (2023).
+
+  - id: manitoba_canada
+    name: Manitoba, Canada
+    country: Canada
+    region: North America
+    aliases: ["manitoba", "mb", "canada - manitoba", "flin flon", "thompson", "snow lake", "lynn lake"]
+    risk_tier: 1
+    risk_level: low
+    political_stability: very_high
+    fraser_rank_approx: 15
+    permitting_timeline_months: 36
+    corporate_tax_rate_pct: 27.0
+    royalty_type: "Mining tax on profit"
+    royalty_rate: "10% on first $500K; 15% on remainder of annual profit (Manitoba Mining Tax)"
+    key_strengths:
+      - Established base and precious metals mining history
+      - Hydroelectric power advantage for processing
+      - Skilled mining workforce in northern communities
+    key_risks:
+      - Longer permitting timelines versus Prairie neighbours
+      - Limited recent major discovery pipeline
+      - Remote infrastructure challenges in the north
+    recent_policy_notes: >
+      Manitoba's mining sector is anchored by base metals in the north.
+      Province is investing in exploration incentives to stimulate new discoveries.
+
+  - id: yukon_canada
+    name: Yukon, Canada
+    country: Canada
+    region: North America
+    aliases: ["yukon", "yt", "canada - yukon", "whitehorse", "dawson city", "mayo", "keno hill"]
+    risk_tier: 1
+    risk_level: low
+    political_stability: very_high
+    fraser_rank_approx: 12
+    permitting_timeline_months: 48
+    corporate_tax_rate_pct: 27.0
+    royalty_type: "Quartz mining royalty"
+    royalty_rate: "1.5% to 3% of net smelter returns (graduated Quartz Mining Act royalty)"
+    key_strengths:
+      - Rich gold, silver, lead-zinc history; active modern discoveries
+      - Supportive territorial government for mining
+      - Scenic geological setting attracts exploration capital
+    key_risks:
+      - Permitting under YESAA (Yukon Environmental and Socio-economic Assessment Act) can be lengthy
+      - First Nations modern treaty obligations require consent-based engagement
+      - Harsh subarctic climate inflates operating and capital costs
+    recent_policy_notes: >
+      Yukon continues to attract exploration capital in gold and critical minerals.
+      The Casino porphyry copper-gold-molybdenum project is a flagship development-stage asset.
+
+  - id: nwt_canada
+    name: Northwest Territories, Canada
+    country: Canada
+    region: North America
+    aliases: ["northwest territories", "nwt", "nt", "canada - nwt", "yellowknife", "hay river", "fort smith", "slave lake"]
+    risk_tier: 1
+    risk_level: low
+    political_stability: very_high
+    fraser_rank_approx: 20
+    permitting_timeline_months: 60
+    corporate_tax_rate_pct: 26.5
+    royalty_type: "NWT Mining Regulations (federal)"
+    royalty_rate: "Graduated royalty: 5%-14% on annual value of production"
+    key_strengths:
+      - World-class diamond production (Ekati, Diavik, Gahcho Kué)
+      - Gold history centred on Yellowknife Greenstone Belt
+      - Strong institutional knowledge of northern mining
+    key_risks:
+      - Some of Canada's most complex and lengthy environmental assessment processes
+      - Very high capital and operating costs due to remoteness
+      - Infrastructure limited; ice roads and air access in many areas
+    recent_policy_notes: >
+      Diamond sector dominates; gold and critical mineral exploration expanding.
+      Mackenzie Valley pipeline corridor could improve northern logistics long-term.
+
+  - id: colorado_usa
+    name: Colorado, USA
+    country: United States
+    region: North America
+    aliases: ["colorado", "co", "us - colorado", "colorado usa", "silverton", "creede", "leadville", "cripple creek", "idaho springs"]
+    risk_tier: 1
+    risk_level: low
+    political_stability: very_high
+    fraser_rank_approx: 18
+    permitting_timeline_months: 36
+    corporate_tax_rate_pct: 28.0
+    royalty_type: "State severance tax + federal royalty on federal land"
+    royalty_rate: "Colorado severance tax: 2.25% of gross income; Federal hardrock: no statutory royalty (currently)"
+    key_strengths:
+      - Rich mining heritage; active polymetallic and precious metals sectors
+      - Skilled workforce and strong university-linked technical expertise
+      - Accessible terrain and established infrastructure in mineral districts
+    key_risks:
+      - Acid mine drainage legacy creates heightened scrutiny on new projects
+      - Colorado Water Quality Control Commission adds permitting complexity
+      - ESG scrutiny elevated after Animas River Gold King Mine incident
+    recent_policy_notes: >
+      Colorado has active gold, silver, and molybdenum projects. State is developing
+      a critical minerals strategy. Federal land permitting under NEPA applies to
+      the majority of projects in the mineral belt.
+
+  - id: idaho_usa
+    name: Idaho, USA
+    country: United States
+    region: North America
+    aliases: ["idaho", "id", "us - idaho", "idaho usa", "coeur d'alene", "silver valley", "cobalt idaho", "blackbird"]
+    risk_tier: 1
+    risk_level: low
+    political_stability: very_high
+    fraser_rank_approx: 14
+    permitting_timeline_months: 36
+    corporate_tax_rate_pct: 28.0
+    royalty_type: "State severance + federal royalty on federal land"
+    royalty_rate: "Idaho has no dedicated mining severance tax; federal hardrock: no statutory royalty"
+    key_strengths:
+      - Coeur d'Alene/Silver Valley is a world-class silver-lead-zinc district
+      - Strong pro-mining regulatory culture
+      - Competitive cost environment; skilled workforce
+    key_risks:
+      - Bunker Hill Superfund legacy elevates environmental scrutiny
+      - Salmon River headwaters — strict water quality requirements
+      - Forest Service and BLM permitting on federal lands can be slow
+    recent_policy_notes: >
+      Idaho is attracting cobalt and critical mineral investment alongside
+      its established silver and gold sectors. Pro-development state government.
+
+  - id: montana_usa
+    name: Montana, USA
+    country: United States
+    region: North America
+    aliases: ["montana", "mt", "us - montana", "montana usa", "butte", "missoula", "billings", "stillwater", "great falls"]
+    risk_tier: 1
+    risk_level: low
+    political_stability: very_high
+    fraser_rank_approx: 22
+    permitting_timeline_months: 42
+    corporate_tax_rate_pct: 28.0
+    royalty_type: "State metals mine license tax + federal royalty on federal land"
+    royalty_rate: "Montana: 1.6%-2.5% of gross value; Federal hardrock: no statutory royalty"
+    key_strengths:
+      - Stillwater palladium-platinum complex — globally significant PGM asset
+      - Copper-silver history (Butte); active exploration revival
+      - Strong ranching and mining coexistence culture
+    key_risks:
+      - Environmental legacy of historical Butte mining (Berkeley Pit) adds scrutiny
+      - 1872 Mining Law on federal lands — reform risk
+      - Significant tribal consultation requirements (Crow, Northern Cheyenne)
+    recent_policy_notes: >
+      Montana hosts Stillwater Mining (Sibanye-Stillwater), one of the only US
+      PGM mines. Copper and critical mineral interest is rising with the energy
+      transition. State permitting is moderate complexity.
+
+  - id: alaska_usa
+    name: Alaska, USA
+    country: United States
+    region: North America
+    aliases: ["alaska", "ak", "us - alaska", "alaska usa", "fairbanks", "juneau", "nome", "porcupine", "donlin", "pebble"]
+    risk_tier: 2
+    risk_level: low_moderate
+    political_stability: high
+    fraser_rank_approx: 30
+    permitting_timeline_months: 60
+    corporate_tax_rate_pct: 28.0
+    royalty_type: "State mining license tax + royalty on state land"
+    royalty_rate: "Alaska: 3%-7% net income tax; State land royalty: 3%-5% of gross value"
+    key_strengths:
+      - Enormous undeveloped mineral endowment (gold, copper, zinc, coal, PGMs)
+      - Donlin Gold, Pebble (copper) among largest undeveloped deposits globally
+      - Federal and state incentives for strategic minerals
+    key_risks:
+      - Extremely remote, high-cost operating environment
+      - Pebble controversy signals elevated social licence risk for large projects
+      - Long, expensive permitting under NEPA and Section 404 (Corps of Engineers)
+      - Subsistence rights of Alaska Native communities require careful engagement
+    recent_policy_notes: >
+      Alaska continues to advance major projects. State government is supportive
+      of development. Federal administration stance on permitting reform affects
+      timeline certainty. Critical mineral classification of several Alaska deposits
+      accelerating federal review.
+
   - id: finland
     name: Finland
     country: Finland
