@@ -157,6 +157,18 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <Link to="/projects" className="sidebar-new-btn">
             <span style={{ fontSize: 16, lineHeight: 1, marginRight: 4 }}>+</span> New Project
           </Link>
+
+          <div className="sidebar-section-label" style={{ marginTop: 20 }}>Tools</div>
+          <Link
+            to="/portfolio/compare"
+            className={`sidebar-bottom-link sidebar-tool-link ${location.pathname.startsWith("/portfolio") ? "active" : ""}`}
+          >
+            <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" />
+              <path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" />
+            </svg>
+            Portfolio
+          </Link>
         </nav>
 
         <div className="sidebar-bottom">

@@ -235,11 +235,12 @@ def _body(pdf, text: str, size: float = 10.5) -> None:
     pdf.multi_cell(_PW, 6.2, _safe(text))
 
 
+_FIG_RE = re.compile(r'\{\{FIGURE:\s*([^|]+)\|([^}]+)\}\}')
+
+
 def _prose(pdf, text: str, size: float = 10.5,
            omf_renders_dir=None) -> None:
     """Render multi-paragraph prose, substituting {{FIGURE: ...}} placeholders."""
-    import re
-    _FIG_RE = re.compile(r'\{\{FIGURE:\s*([^|]+)\|([^}]+)\}\}')
 
     pdf.set_font("Helvetica", "", size)
     pdf.set_text_color(*_INK)
@@ -267,7 +268,6 @@ def _prose(pdf, text: str, size: float = 10.5,
                 if candidate.exists():
                     img_path = candidate
             if img_path is None:
-                from pathlib import Path as _Path
                 # Try to find in project renders dirs (passed via closure in _generate_pdf)
                 pass
             if img_path and img_path.suffix.lower() in {".png", ".jpg", ".jpeg"}:

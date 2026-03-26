@@ -391,7 +391,8 @@ def _describe_data_attribute(d) -> str | None:
 def _pca_orientation(verts: np.ndarray) -> str | None:
     """Return human-readable long axis description from PCA of vertex cloud."""
     try:
-        centred = verts - verts.mean(axis=0)
+        sample = verts[:10_000] if len(verts) > 10_000 else verts
+        centred = sample - sample.mean(axis=0)
         _, _, Vt = np.linalg.svd(centred, full_matrices=False)
         long_axis = Vt[0]   # principal axis (unit vector)
         # Azimuth: angle from North (Y+) clockwise in horizontal plane
@@ -536,8 +537,11 @@ def _render_figures(
             else:
                 pl.add_mesh(mesh, color="#4a90d9", opacity=0.85)
 
+            cam_pos = view["camera_pos"]
+            if not np.all(np.isfinite(cam_pos)):
+                cam_pos = centroid + np.array([0, -radius, radius * 0.5])
             pl.camera_position = [
-                view["camera_pos"].tolist(),
+                cam_pos.tolist(),
                 centroid.tolist(),
                 [0, 0, 1],
             ]

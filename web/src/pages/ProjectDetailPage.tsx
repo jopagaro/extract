@@ -92,6 +92,7 @@ import {
   listResources,
   listRoyalties,
   listRuns,
+  refreshNpv,
   refreshProjectNews,
   renameProject,
   patchProject,
@@ -104,7 +105,7 @@ import {
 import DropZone from "../components/shared/DropZone";
 import { useToast } from "../components/shared/Toast";
 import type { DrillholeDataset, TracePoint, EdgarCompany, EdgarFiling, EdgarDocument, JurisdictionRisk } from "../api/client";
-import type { Comparable, FileRecord, NewsFeed, NewsItem, Note, Project, ResourceRow, ResourceSummary, Royalty, RoyaltySummary, RunStatus } from "../types";
+import type { Comparable, FileRecord, NewsFeed, NewsItem, Note, NpvRefreshResult, Project, ResourceRow, ResourceSummary, Royalty, RoyaltySummary, RunStatus } from "../types";
 
 // ── Icons ──────────────────────────────────────────────────────────────────
 
@@ -304,6 +305,8 @@ export default function ProjectDetailPage() {
   const [newsFeed, setNewsFeed] = useState<NewsFeed | null>(null);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsRefreshing, setNewsRefreshing] = useState(false);
+  const [npvRefresh, setNpvRefresh] = useState<NpvRefreshResult | null>(null);
+  const [npvRefreshing, setNpvRefreshing] = useState(false);
   const [expandedNewsIds, setExpandedNewsIds] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState<Note[]>([]);
   const [noteText, setNoteText] = useState("");
@@ -785,6 +788,18 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function handleNpvRefresh() {
+    setNpvRefreshing(true);
+    try {
+      const result = await refreshNpv(id);
+      setNpvRefresh(result);
+    } catch (err: unknown) {
+      toast((err as Error).message ?? "NPV refresh failed", "error");
+    } finally {
+      setNpvRefreshing(false);
+    }
+  }
+
   async function handleRunAnalysis() {
     if (files.length === 0) {
       toast("Upload files first before running analysis", "error");
@@ -832,6 +847,16 @@ export default function ProjectDetailPage() {
         </div>
         <div className="project-header-right">
           <ProjectMenu onRename={() => setShowRename(true)} onArchive={handleArchive} />
+          {runs.some((r) => r.status === "complete") && (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={handleNpvRefresh}
+              disabled={npvRefreshing}
+              title="Re-estimate NPV at today's commodity prices"
+            >
+              {npvRefreshing ? <span className="spinner" style={{ width: 13, height: 13 }} /> : "↻"} Refresh NPV
+            </button>
+          )}
           <button
             className="btn btn-primary"
             onClick={handleRunAnalysis}
@@ -845,6 +870,53 @@ export default function ProjectDetailPage() {
           </button>
         </div>
       </div>
+
+      {/* NPV delta card */}
+      {npvRefresh && (
+        <div className={`npv-delta-card npv-delta-${
+          npvRefresh.npv_delta_pct == null ? "neutral"
+            : npvRefresh.npv_delta_pct > 2 ? "up"
+            : npvRefresh.npv_delta_pct < -2 ? "down"
+            : "neutral"
+        }`}>
+          <div className="npv-delta-inner">
+            <div className="npv-delta-main">
+              <span className="npv-delta-label">NPV at today's prices</span>
+              <span className="npv-delta-value">
+                {npvRefresh.new_npv_musd != null
+                  ? `$${npvRefresh.new_npv_musd.toLocaleString()}M`
+                  : npvRefresh.last_npv_musd != null
+                    ? `$${npvRefresh.last_npv_musd.toLocaleString()}M (unchanged)`
+                    : "—"
+                }
+              </span>
+              {npvRefresh.npv_delta_pct != null && (
+                <span className={`npv-delta-pct ${npvRefresh.npv_delta_pct >= 0 ? "npv-delta-pct--up" : "npv-delta-pct--down"}`}>
+                  {npvRefresh.npv_delta_pct >= 0 ? "▲" : "▼"} {Math.abs(npvRefresh.npv_delta_pct).toFixed(1)}% since last run
+                </span>
+              )}
+            </div>
+            {(npvRefresh.commodity || npvRefresh.current_price != null) && (
+              <div className="npv-delta-prices">
+                {npvRefresh.current_price != null && (
+                  <span className="npv-delta-price-chip">
+                    {npvRefresh.commodity ?? "commodity"} {npvRefresh.current_price.toLocaleString()}
+                    {npvRefresh.price_change_pct != null && (
+                      <span style={{ color: npvRefresh.price_change_pct >= 0 ? "var(--success)" : "#ef4444" }}>
+                        {" "}({npvRefresh.price_change_pct >= 0 ? "+" : ""}{npvRefresh.price_change_pct.toFixed(1)}%)
+                      </span>
+                    )}
+                  </span>
+                )}
+              </div>
+            )}
+            {npvRefresh.error && (
+              <div className="npv-delta-error">{npvRefresh.error}</div>
+            )}
+          </div>
+          <button className="npv-delta-dismiss" onClick={() => setNpvRefresh(null)} title="Dismiss">×</button>
+        </div>
+      )}
 
       {showRename && (
         <RenameModal

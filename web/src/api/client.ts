@@ -6,6 +6,7 @@ import type {
   FileRecord,
   IngestResponse,
   NewsFeed,
+  NpvRefreshResult,
   PortfolioNewsItem,
   Note,
   Project,
@@ -124,6 +125,10 @@ export async function startAnalysis(projectId: string): Promise<RunStatus> {
     method: "POST",
     body: JSON.stringify({ force: false }),
   });
+}
+
+export async function refreshNpv(projectId: string): Promise<NpvRefreshResult> {
+  return request(`/projects/${projectId}/npv-refresh`, { method: "POST" });
 }
 
 export async function listRuns(projectId: string): Promise<RunStatus[]> {

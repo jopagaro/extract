@@ -190,3 +190,17 @@ export interface PortfolioNewsItem extends NewsItem {
   project_id: string;
   project_name: string;
 }
+
+export interface NpvRefreshResult {
+  new_npv_musd: number | null;
+  last_npv_musd: number | null;
+  npv_delta_pct: number | null;
+  new_irr_pct: number | null;
+  last_irr_pct: number | null;
+  commodity: string | null;
+  current_price: number | null;
+  last_price: number | null;
+  price_change_pct: number | null;
+  refreshed_at: string;
+  error?: string | null;
+}

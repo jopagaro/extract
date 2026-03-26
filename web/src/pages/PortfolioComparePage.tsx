@@ -92,6 +92,199 @@ function getHighlights(
 }
 
 // ---------------------------------------------------------------------------
+// Grade–Tonnage Bubble Chart
+// ---------------------------------------------------------------------------
+
+function GradeTonnageChart({ projects }: { projects: ProjectMetrics[] }) {
+  const [tooltip, setTooltip] = useState<{
+    x: number; y: number; name: string; tonnage: number; grade: number;
+    npv: number | null; stage: string;
+  } | null>(null);
+
+  const plotData = projects.filter(
+    (p) => p.total_resource_mt != null && (p.total_resource_mt as number) > 0
+      && p.primary_grade != null && (p.primary_grade as number) > 0
+  );
+
+  if (plotData.length < 2) return null;
+
+  const W = 600, H = 340;
+  const ML = 60, MR = 24, MT = 20, MB = 48;
+  const iW = W - ML - MR;
+  const iH = H - MT - MB;
+
+  const tons   = plotData.map(p => p.total_resource_mt as number);
+  const grades = plotData.map(p => p.primary_grade as number);
+  const npvs   = plotData.map(p => p.npv_musd).filter((v): v is number => v != null);
+
+  // Padded log-scale extents
+  const tMin = Math.min(...tons)   / 2, tMax = Math.max(...tons)   * 2;
+  const gMin = Math.min(...grades) / 2, gMax = Math.max(...grades) * 2;
+  const npvMin = npvs.length ? Math.min(...npvs) : 0;
+  const npvMax = npvs.length ? Math.max(...npvs) : 1;
+
+  const lx = (v: number) => (Math.log(v / tMin) / Math.log(tMax / tMin)) * iW;
+  const ly = (v: number) => iH - (Math.log(v / gMin) / Math.log(gMax / gMin)) * iH;
+  const lr = (v: number | null) =>
+    v == null || npvMax <= npvMin ? 16 : 12 + ((v - npvMin) / (npvMax - npvMin)) * 28;
+
+  // Minimal log tick generator
+  function logTicks(min: number, max: number): number[] {
+    const result: number[] = [];
+    let mag = Math.floor(Math.log10(min));
+    let base = Math.pow(10, mag);
+    while (base <= max * 1.5) {
+      for (const m of [1, 2, 5]) {
+        const t = base * m;
+        if (t >= min * 0.8 && t <= max * 1.5) result.push(t);
+      }
+      base *= 10;
+    }
+    return [...new Set(result)].sort((a, b) => a - b);
+  }
+
+  const xTicks = logTicks(tMin, tMax);
+  const yTicks = logTicks(gMin, gMax);
+
+  const stageColor: Record<string, string> = {
+    PEA: "#f59e0b", PFS: "#0891b2", FS: "#16a34a", scoping: "#d97706", other: "#6b7280",
+  };
+  const presentStages = [...new Set(plotData.map(p => p.study_type ?? "other"))];
+
+  const fmtTon = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${v}`;
+
+  return (
+    <div style={{ marginTop: 48 }}>
+      <div style={{
+        fontSize: 11, fontWeight: 700, letterSpacing: "0.07em",
+        textTransform: "uppercase", color: "var(--text-tertiary)", marginBottom: 6,
+      }}>
+        Grade–Tonnage Comparison
+      </div>
+      <p style={{ fontSize: 13, color: "var(--text-tertiary)", margin: "0 0 16px" }}>
+        Bubble size = NPV &nbsp;·&nbsp; Colour = study stage &nbsp;·&nbsp; Log scale both axes
+      </p>
+
+      <div style={{ position: "relative", display: "inline-block" }}>
+        <svg width={W} height={H} style={{ overflow: "visible", display: "block" }}>
+          <g transform={`translate(${ML},${MT})`}>
+            {/* Grid lines */}
+            {xTicks.map(t => (
+              <line key={`gx${t}`} x1={lx(t)} x2={lx(t)} y1={0} y2={iH}
+                stroke="var(--border)" strokeWidth={0.5} strokeDasharray="3,3" />
+            ))}
+            {yTicks.map(t => (
+              <line key={`gy${t}`} x1={0} x2={iW} y1={ly(t)} y2={ly(t)}
+                stroke="var(--border)" strokeWidth={0.5} strokeDasharray="3,3" />
+            ))}
+
+            {/* X axis */}
+            {xTicks.map(t => (
+              <g key={`xt${t}`} transform={`translate(${lx(t)},${iH})`}>
+                <line y2={5} stroke="var(--border)" />
+                <text y={18} textAnchor="middle" fontSize={10} fill="var(--text-tertiary)">
+                  {fmtTon(t)}
+                </text>
+              </g>
+            ))}
+            <text x={iW / 2} y={iH + 40} textAnchor="middle" fontSize={11} fill="var(--text-secondary)">
+              Total Resource (Mt)
+            </text>
+
+            {/* Y axis */}
+            {yTicks.map(t => (
+              <g key={`yt${t}`} transform={`translate(0,${ly(t)})`}>
+                <line x2={-5} stroke="var(--border)" />
+                <text x={-8} textAnchor="end" dominantBaseline="middle" fontSize={10} fill="var(--text-tertiary)">
+                  {t}
+                </text>
+              </g>
+            ))}
+            <text
+              transform={`translate(-48,${iH / 2}) rotate(-90)`}
+              textAnchor="middle" fontSize={11} fill="var(--text-secondary)"
+            >
+              Primary Grade (g/t)
+            </text>
+
+            {/* Bubbles */}
+            {plotData.map(p => {
+              const cx = lx(p.total_resource_mt as number);
+              const cy = ly(p.primary_grade as number);
+              const r  = lr(p.npv_musd ?? null);
+              const color = stageColor[p.study_type ?? "other"] ?? "#6b7280";
+              return (
+                <g key={p.project_id}>
+                  <circle
+                    cx={cx} cy={cy} r={r}
+                    fill={color} fillOpacity={0.72}
+                    stroke={color} strokeWidth={1.5}
+                    style={{ cursor: "pointer" }}
+                    onMouseEnter={(e) => setTooltip({
+                      x: e.clientX, y: e.clientY,
+                      name: p.name,
+                      tonnage: p.total_resource_mt as number,
+                      grade: p.primary_grade as number,
+                      npv: p.npv_musd ?? null,
+                      stage: p.study_type ?? "—",
+                    })}
+                    onMouseLeave={() => setTooltip(null)}
+                  />
+                </g>
+              );
+            })}
+
+            {/* Chart border */}
+            <rect x={0} y={0} width={iW} height={iH}
+              fill="none" stroke="var(--border)" strokeWidth={1} />
+          </g>
+        </svg>
+
+        {/* Stage legend */}
+        <div style={{ display: "flex", gap: 14, marginTop: 10, flexWrap: "wrap" }}>
+          {presentStages.map(stage => (
+            <span key={stage} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--text-secondary)" }}>
+              <span style={{
+                width: 10, height: 10, borderRadius: "50%",
+                background: stageColor[stage] ?? "#6b7280", display: "inline-block",
+              }} />
+              {stage}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Fixed tooltip */}
+      {tooltip && (
+        <div style={{
+          position: "fixed",
+          left: tooltip.x + 14,
+          top: tooltip.y - 80,
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          padding: "10px 14px",
+          fontSize: 13,
+          boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+          pointerEvents: "none",
+          zIndex: 9999,
+          minWidth: 160,
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: 4, color: "var(--text-primary)" }}>{tooltip.name}</div>
+          <div style={{ color: "var(--text-secondary)" }}>
+            {tooltip.tonnage.toLocaleString()} Mt &nbsp;·&nbsp; {tooltip.grade} g/t
+          </div>
+          {tooltip.npv != null && (
+            <div style={{ color: "var(--text-secondary)" }}>NPV: ${tooltip.npv.toLocaleString()}M</div>
+          )}
+          <div style={{ color: "var(--text-tertiary)", fontSize: 11, marginTop: 3 }}>{tooltip.stage}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Page
 // ---------------------------------------------------------------------------
 
@@ -169,10 +362,13 @@ export default function PortfolioComparePage() {
         </div>
       ) : allProjects.length < 2 ? (
         <div className="empty-state">
-          <h3>Not enough projects</h3>
-          <p>You need at least two projects to use portfolio comparison.</p>
+          <h3>Portfolio comparison needs at least 2 projects</h3>
+          <p>
+            Run analysis on at least 2 projects to compare them. Portfolio comparison pulls
+            grade, tonnage, NPV, and IRR automatically from each completed run.
+          </p>
           <Link to="/projects" className="btn btn-primary" style={{ marginTop: 16 }}>
-            Create a Project
+            Go to Projects
           </Link>
         </div>
       ) : (
@@ -243,8 +439,9 @@ export default function PortfolioComparePage() {
             </div>
           </div>
 
-          {/* Comparison matrix */}
+          {/* Comparison matrix + bubble chart */}
           {comparison.length > 0 && (
+            <>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 600 }}>
                 <thead>
@@ -353,6 +550,9 @@ export default function PortfolioComparePage() {
                 Green = best value in group · Red = worst value · Economics pulled from most recent completed run · Resource data from manually entered resource table
               </div>
             </div>
+
+            <GradeTonnageChart projects={comparison} />
+            </>
           )}
 
           {comparison.length === 0 && !loading && (

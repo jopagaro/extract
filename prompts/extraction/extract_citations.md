@@ -44,7 +44,10 @@ be inferred from headings in the source text.
 1. Read the report sections in the `extra_context` to identify all citable claims
 2. Search the source documents for passages that support each claim
 3. For each claim, record the exact source file, a verbatim quote from the source,
-   and a location reference (section heading, table name, page number) if visible
+   and a location reference (section heading, table name, page number) if visible.
+   In `location_in_source`, always include the page number as "Page N" when it is
+   visible in the source text. For PDFs, prefix with `#page=N` so that browser-based
+   PDF viewers can navigate directly to the relevant page (e.g. `#page=12 — Table 3`).
 4. Assign a citation ID (C001, C002, …) to each citation
 5. Flag any claim that cannot be traced to a source (confidence = "not_found") —
    this may indicate the LLM introduced a figure not present in the documents

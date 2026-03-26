@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { getReport } from "../api/client";
 
@@ -93,9 +93,7 @@ function NarrativeSection({ assembly, projectId }: {
       {paragraphs.length > 0 && (
         <div className="report-narrative-body">
           {paragraphs.map((para, i) => {
-            FIGURE_RE.lastIndex = 0;
-            if (FIGURE_RE.test(para) && projectId) {
-              FIGURE_RE.lastIndex = 0;
+            if (para.includes("{{FIGURE:") && projectId) {
               return <React.Fragment key={i}>{renderProseWithFigures(para, projectId)}</React.Fragment>;
             }
             return <p key={i} className="report-narrative-para">{para}</p>;
@@ -157,12 +155,13 @@ function DataTable({ items }: { items: Record<string, unknown>[] }) {
 // ── Figure placeholder substitution ──────────────────────────────────────────
 // Handles {{FIGURE: filename | Caption text}} injected by the LLM into prose.
 
-const FIGURE_RE = /\{\{FIGURE:\s*([^|]+)\|([^}]+)\}\}/g;
+// Non-global: safe to reuse for both detection (.includes fast path) and extraction.
+const FIGURE_RE = /\{\{FIGURE:\s*([^|]+)\|([^}]+)\}\}/;
 
 function renderProseWithFigures(text: string, projectId: string): React.ReactNode[] {
-  const parts = text.split(/({{FIGURE:[^}]+}})/g);
+  const parts = text.split(/(\{\{FIGURE:\s*[^|]+\|[^}]+\}\})/);
   return parts.map((part, i) => {
-    const match = part.match(/\{\{FIGURE:\s*([^|]+)\|([^}]+)\}\}/);
+    const match = part.match(FIGURE_RE);
     if (match) {
       const filename = match[1].trim();
       const caption  = match[2].trim();
@@ -197,16 +196,12 @@ function ProseField({ label, value, showLabel, projectId }: {
   showLabel: boolean;
   projectId?: string;
 }) {
-  const hasFigures = FIGURE_RE.test(value);
-  // Reset lastIndex after test()
-  FIGURE_RE.lastIndex = 0;
-
   return (
     <div className="report-prose-para">
       {showLabel && (
         <div className="report-para-label">{label.replace(/_/g, " ")}</div>
       )}
-      {hasFigures && projectId
+      {value.includes("{{FIGURE:") && projectId
         ? renderProseWithFigures(value, projectId)
         : <p>{value}</p>
       }
@@ -941,6 +936,70 @@ function ComplianceSection({ data }: { data: Record<string, unknown> }) {
   );
 }
 
+// ── Citation Panel ───────────────────────────────────────────────────────────
+
+function CitationPanel({
+  sectionKey,
+  citations,
+  projectId,
+  onClose,
+}: {
+  sectionKey: string;
+  citations: Citation[];
+  projectId: string;
+  onClose: () => void;
+}) {
+  const confLabel: Record<string, string> = { direct: "Direct", inferred: "Inferred", not_found: "Not found" };
+  const title = SECTION_LABEL[sectionKey] ?? sectionKey.replace(/_/g, " ");
+
+  return (
+    <>
+      <div className="citation-panel-overlay" onClick={onClose} />
+      <aside className="citation-panel">
+        <div className="citation-panel-header">
+          <div>
+            <div className="citation-panel-title">{title}</div>
+            <div className="citation-panel-count">
+              {citations.length} source{citations.length !== 1 ? "s" : ""}
+            </div>
+          </div>
+          <button className="citation-panel-close" onClick={onClose} aria-label="Close">×</button>
+        </div>
+        <div className="citation-panel-body">
+          {citations.map((c) => (
+            <div key={c.citation_id} className="citation-card">
+              <div className="citation-card-top">
+                <span className={`conf-dot conf-${c.confidence}`} title={confLabel[c.confidence]} />
+                <span className="citation-card-id">{c.citation_id}</span>
+                <span className="citation-card-file">{c.source_file}</span>
+              </div>
+              {c.location_in_source && (
+                <div className="citation-card-location">{c.location_in_source}</div>
+              )}
+              <div className="citation-card-claim">{c.claim}</div>
+              {c.confidence !== "not_found" && c.source_quote && (
+                <div className="citation-quote">"{c.source_quote}"</div>
+              )}
+              {c.confidence !== "not_found" ? (
+                <a
+                  className="citation-source-link"
+                  href={`${API_BASE}/projects/${projectId}/files/${encodeURIComponent(c.source_file)}/content`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open source →
+                </a>
+              ) : (
+                <div className="citation-not-found">Could not be traced to a source document</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </aside>
+    </>
+  );
+}
+
 // ── Section layout config ────────────────────────────────────────────────────
 
 type SectionLayer = "narrative" | "detail" | "appendix" | "hidden";
@@ -961,7 +1020,7 @@ const SECTION_CONFIG: Record<string, {
   "10_contradictions":  { title: "Contradiction & Consistency Check", subtitle: "Internal contradictions, numeric mismatches, and arithmetic errors", layer: "detail", number: "7" },
   "13_compliance":      { title: "NI 43-101 / JORC Compliance Check", subtitle: "Assessment against NI 43-101 and JORC Code 2012 reporting requirements", layer: "detail", number: "8" },
   "00_data_sources":    { title: "Appendix A — Source Documents", subtitle: "All documents used in this analysis", layer: "appendix" },
-  "11_citations":       { title: "Appendix B — Source Citations", subtitle: "Traceability index mapping report claims to source documents", layer: "appendix" },
+  "11_citations":       { title: "Appendix B — Source Citations", subtitle: "Traceability index mapping report claims to source documents", layer: "hidden" },
   "01_project_facts":   { title: "Project Facts", layer: "hidden" },
   "02_executive_summary": { title: "Executive Summary", layer: "hidden" }, // legacy — replaced by assembly
 };
@@ -1003,6 +1062,8 @@ export default function ReportPage() {
   const [report, setReport] = useState<ReportContent | null>(null);
   const [loading, setLoading] = useState(true);
   const [scrollPct, setScrollPct] = useState(0);
+  const [activeCitationSection, setActiveCitationSection] = useState<string | null>(null);
+  const [warningDismissed, setWarningDismissed] = useState(false);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -1049,6 +1110,25 @@ export default function ReportPage() {
 
   const sections = report.sections;
   const projectName = id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+  // Citation data — sourced from 11_citations section
+  const allCitations = useMemo(() => {
+    const citData = sections["11_citations"] as Record<string, unknown> | undefined;
+    return (citData?.citations as Citation[]) ?? [];
+  }, [sections]);
+
+  const citationsBySection = useMemo(() => {
+    const map: Record<string, Citation[]> = {};
+    for (const c of allCitations) {
+      (map[c.section] ??= []).push(c);
+    }
+    return map;
+  }, [allCitations]);
+
+  const notFoundCount = useMemo(
+    () => allCitations.filter((c) => c.confidence === "not_found").length,
+    [allCitations]
+  );
   const generatedAt = new Date().toLocaleDateString("en-US", {
     month: "long", day: "numeric", year: "numeric",
   });
@@ -1095,6 +1175,29 @@ export default function ReportPage() {
     <div className="report-full" ref={containerRef} onScroll={handleScroll}>
       {/* Scroll progress bar */}
       <div className="report-progress-bar" style={{ width: `${scrollPct}%` }} />
+
+      {/* Not-found citation warning */}
+      {notFoundCount > 0 && !warningDismissed && (
+        <div className="citation-warning-banner">
+          <span>
+            ⚠ {notFoundCount} claim{notFoundCount !== 1 ? "s" : ""} could not be traced to a
+            source document — review before relying on this report.
+          </span>
+          <button className="citation-warning-dismiss" onClick={() => setWarningDismissed(true)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Citation panel overlay */}
+      {activeCitationSection && (
+        <CitationPanel
+          sectionKey={activeCitationSection}
+          citations={citationsBySection[activeCitationSection] ?? []}
+          projectId={id}
+          onClose={() => setActiveCitationSection(null)}
+        />
+      )}
 
       {/* Top bar */}
       <div className="report-topbar">
@@ -1168,11 +1271,23 @@ export default function ReportPage() {
         {detailKeys.length > 0 && <div className="report-section-divider" />}
         {detailKeys.map((key) => {
           const cfg = SECTION_CONFIG[key];
+          const sectionCitations = citationsBySection[key];
           return (
             <div key={key} id={key} ref={(el) => { sectionRefs.current[key] = el; }} className="report-section">
               <div className="report-section-header">
                 <div className="report-section-heading">
-                  <div className="report-section-title">{cfg?.title ?? key}</div>
+                  <div className="report-section-title-row">
+                    <div className="report-section-title">{cfg?.title ?? key}</div>
+                    {sectionCitations?.length > 0 && (
+                      <button
+                        className="citation-badge"
+                        onClick={() => setActiveCitationSection(key)}
+                        title="View source citations"
+                      >
+                        {sectionCitations.length} {sectionCitations.length === 1 ? "source" : "sources"}
+                      </button>
+                    )}
+                  </div>
                   {cfg?.subtitle && <div className="report-section-subtitle">{cfg.subtitle}</div>}
                 </div>
               </div>

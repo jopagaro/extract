@@ -10,7 +10,7 @@ Interactive docs at: http://localhost:8000/docs
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routers import activate, analyze, comparables, drillholes, export, ingest, news, notes, portfolio, projects, renders, reports, resources, royalties, settings, tools
+from api.routers import activate, analyze, comparables, drillholes, export, ingest, news, notes, npv, portfolio, projects, renders, reports, resources, royalties, settings, tools
 from api.routers.ingest import edgar_router, url_router
 from api.routers.settings import load_and_apply_settings
 
@@ -47,6 +47,7 @@ app.include_router(royalties.router)
 app.include_router(portfolio.router)
 app.include_router(drillholes.router)
 app.include_router(renders.router)
+app.include_router(npv.router)
 app.include_router(tools.router)
 app.include_router(news.router)
 app.include_router(settings.router)
