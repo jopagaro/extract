@@ -208,22 +208,36 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
 
         facts_str = json.dumps(facts, indent=2)
 
-        # ── Step 2.1: Jurisdiction risk lookup (non-fatal, synchronous) ─────
+        # ── Step 2.1: Jurisdiction profile — live web search (non-fatal) ────
+        # Detects jurisdiction from project facts then researches current tax
+        # rates, royalty structures, and policy via gpt-4o-search-preview.
+        # No hardcoded database — results reflect law as of analysis date.
         juris_data: dict = {}
         try:
-            from engine.market.jurisdiction_risk import detect_jurisdiction, get_jurisdiction_risk
+            import os as _os
+            from openai import OpenAI as _OAI
+            from engine.market.jurisdiction_risk import detect_jurisdiction
+            from engine.llm.extraction.research_jurisdiction_profile import research_jurisdiction_profile
+
             detected_jurisdiction = detect_jurisdiction(facts)
             if detected_jurisdiction:
-                juris_risk = get_jurisdiction_risk(detected_jurisdiction)
-                juris_data = juris_risk if juris_risk else {
-                    "not_found": True,
-                    "query": detected_jurisdiction,
-                    "reason": f"No profile found for '{detected_jurisdiction}'",
-                }
+                update(f"Researching jurisdiction profile: {detected_jurisdiction}")
+                _oai_key = _os.getenv("OPENAI_API_KEY")
+                if _oai_key:
+                    _oai_client = _OAI(api_key=_oai_key)
+                    juris_data = asyncio.run(
+                        research_jurisdiction_profile(detected_jurisdiction, _oai_client)
+                    )
+                else:
+                    juris_data = {
+                        "jurisdiction": detected_jurisdiction,
+                        "note": "OpenAI API key not configured — jurisdiction profile unavailable.",
+                    }
             else:
-                juris_data = {"not_found": True, "reason": "Jurisdiction not found in project facts"}
+                juris_data = {"note": "Jurisdiction could not be determined from project documents."}
             _save_section(project_id, run_id, "12_jurisdiction_risk", juris_data)
-        except Exception:
+        except Exception as _juris_exc:
+            logger.warning("Jurisdiction profile step failed (non-fatal): %s", _juris_exc)
             pass  # non-fatal — don't block the pipeline
 
         # ── Step 2.2: Extract resources, royalties, comparables in parallel ──
