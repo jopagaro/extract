@@ -156,11 +156,32 @@ _JURISDICTION_KEYS = [
     "project_location.state_province",
 ]
 
+# Keys that represent the province / state — more specific than country alone.
+# These must match the actual field names produced by extract_project_facts.
+_REGION_KEYS = [
+    "project_location.region_or_state",
+    "project_location.state_province",
+    "project_location.region",
+    "state_province",
+    "region_or_state",
+    "region",
+]
+
+_COUNTRY_KEYS = [
+    "project_location.country",
+    "country",
+]
+
 
 def detect_jurisdiction(facts: dict) -> str | None:
     """
-    Walk the project-facts dict looking for jurisdiction/country fields.
-    Returns the first non-empty, non-generic value found.
+    Walk the project-facts dict looking for the most-specific geographic
+    identifier possible.  Preference order:
+      1. Explicit "jurisdiction" field
+      2. Province/state + country combined (e.g. "Ontario, Canada") — avoids
+         ambiguous bare-country lookups that can match the wrong jurisdiction
+      3. Province/state alone
+      4. Country alone (least specific — only used as last resort)
     """
     _SKIP = {"unknown", "not specified", "n/a", "none", "tbd", "various", ""}
 
@@ -178,12 +199,60 @@ def detect_jurisdiction(facts: dict) -> str | None:
     if not isinstance(facts, dict):
         return None
 
+    # 1 — explicit jurisdiction field (top-level or one level deep)
+    for key in ("jurisdiction",):
+        v = _get_nested(facts, key)
+        if v:
+            return v
+    for value in facts.values():
+        if isinstance(value, dict):
+            v = _get_nested(value, "jurisdiction")
+            if v:
+                return v
+
+    # 2 — province/state + country combined ("Ontario, Canada")
+    region: str | None = None
+    country: str | None = None
+    for key in _REGION_KEYS:
+        region = _get_nested(facts, key)
+        if region:
+            break
+    if not region:
+        for value in facts.values():
+            if isinstance(value, dict):
+                for key in _REGION_KEYS:
+                    region = _get_nested(value, key)
+                    if region:
+                        break
+            if region:
+                break
+
+    for key in _COUNTRY_KEYS:
+        country = _get_nested(facts, key)
+        if country:
+            break
+    if not country:
+        for value in facts.values():
+            if isinstance(value, dict):
+                for key in _COUNTRY_KEYS:
+                    country = _get_nested(value, key)
+                    if country:
+                        break
+            if country:
+                break
+
+    if region and country:
+        return f"{region}, {country}"   # e.g. "Ontario, Canada"
+    if region:
+        return region
+    if country:
+        return country
+
+    # 3 — broad fallback: any non-empty location-like field
     for key in _JURISDICTION_KEYS:
         v = _get_nested(facts, key)
         if v:
             return v
-
-    # Recursive shallow search one level deep
     for value in facts.values():
         if isinstance(value, dict):
             for key in _JURISDICTION_KEYS:
