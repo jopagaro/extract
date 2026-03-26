@@ -71,10 +71,32 @@ def get_jurisdiction_risk(name: str) -> dict | None:
     Matching strategy (in order):
     1. Exact id match
     2. Exact alias match
-    3. Normalised alias substring / superset match
-    4. Token-overlap score — pick best if score > 0.4
-    5. Return None
+    3. Long-alias substring match (aliases >= 4 chars only — prevents
+       short codes like "on", "wa", "bc" matching mid-word in the query)
+    4. Token-overlap score — pick best if score >= 0.35
+    5. Country-only fallback — if query looks like "State, Country",
+       retry with just the country part
+    6. Return None
     """
+    if not name or not name.strip():
+        return None
+
+    result = _lookup(name)
+    if result is not None:
+        return result
+
+    # Step 5 — if the query is "Region, Country", retry with country alone.
+    # This handles states/provinces not individually listed in the DB.
+    if "," in name:
+        country_part = name.split(",", 1)[1].strip()
+        if country_part:
+            return _lookup(country_part)
+
+    return None
+
+
+def _lookup(name: str) -> dict | None:
+    """Single-pass lookup — no country fallback."""
     if not name or not name.strip():
         return None
 
@@ -90,14 +112,15 @@ def get_jurisdiction_risk(name: str) -> dict | None:
             if norm_query == _normalise(alias):
                 return _enrich(entry)
 
-    # 3 — alias substring in either direction
+    # 3 — substring match, but only for aliases >= 4 chars to prevent
+    #     short codes ("on", "wa", "bc", "az") matching mid-word.
     for entry in db:
         entry_norm = _normalise(entry["name"])
-        if norm_query in entry_norm or entry_norm in norm_query:
+        if len(entry_norm) >= 4 and (norm_query in entry_norm or entry_norm in norm_query):
             return _enrich(entry)
         for alias in entry.get("aliases", []):
             a = _normalise(alias)
-            if norm_query in a or a in norm_query:
+            if len(a) >= 4 and (norm_query in a or a in norm_query):
                 return _enrich(entry)
 
     # 4 — token overlap
