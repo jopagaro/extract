@@ -150,6 +150,7 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
         text_parts = []
         source_files = []
         image_files: list[str] = []
+        cad_text_parts: list[str] = []   # CAD/OMF descriptions for semantic extraction
         load_errors = []
         for rf in raw_files:
             try:
@@ -161,6 +162,9 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
                 if text and text.strip():
                     text_parts.append(f"[Source: {rf.name}]\n{text}")
                     source_files.append(rf.name)
+                    # Collect CAD/3D descriptions separately for semantic extraction
+                    if rf.suffix.lower() in _CAD_EXTS | _OMF_EXTS:
+                        cad_text_parts.append(f"[Source: {rf.name}]\n{text}")
                 if rf.suffix.lower() in _IMAGE_EXTS:
                     image_files.append(rf.name)
             except Exception as exc:
@@ -240,28 +244,33 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
             logger.warning("Jurisdiction profile step failed (non-fatal): %s", _juris_exc)
             pass  # non-fatal — don't block the pipeline
 
-        # ── Step 2.2: Extract resources, royalties, comparables in parallel ──
-        # These save to normalized/metadata/ so they persist across runs and
-        # feed the Details tab directly.
-        update("Extracting resources, royalties, and comparables")
+        # ── Step 2.2: Extract structured data in parallel ─────────────────────
+        # Tier 1/2 investor-relevant extractions all run concurrently.
+        # Results persist to normalized/metadata/ across runs.
+        update("Extracting resources, metallurgy, permitting, capital structure, and operator data")
         try:
             from engine.llm.extraction.extract_resource_table import extract_resource_table
             from engine.llm.extraction.extract_royalties import extract_royalties
             from engine.llm.extraction.extract_comparable_transactions import extract_comparable_transactions
+            from engine.llm.extraction.extract_metallurgy import extract_metallurgy
+            from engine.llm.extraction.extract_permitting import extract_permitting
+            from engine.llm.extraction.extract_operator_track_record import extract_operator_track_record
+            from engine.llm.extraction.extract_capital_structure import extract_capital_structure
 
-            async def _extract_detail_data() -> tuple[dict, dict, dict]:
-                res, roy, comps = await asyncio.gather(
+            async def _extract_detail_data():
+                results = await asyncio.gather(
                     extract_resource_table(truncated, run_id=run_id),
                     extract_royalties(truncated, run_id=run_id),
                     extract_comparable_transactions(truncated, run_id=run_id),
+                    extract_metallurgy(truncated, run_id=run_id),
+                    extract_permitting(truncated, run_id=run_id),
+                    extract_operator_track_record(truncated, run_id=run_id),
+                    extract_capital_structure(truncated, run_id=run_id),
                 )
-                return (
-                    _extract_response_data(res),
-                    _extract_response_data(roy),
-                    _extract_response_data(comps),
-                )
+                return tuple(_extract_response_data(r) for r in results)
 
-            res_data, roy_data, comp_data = asyncio.run(_extract_detail_data())
+            (res_data, roy_data, comp_data,
+             met_data, permit_data, operator_data, capstruct_data) = asyncio.run(_extract_detail_data())
 
             # Write to normalized/metadata/ using the same storage paths as the
             # royalties/resources/comparables routers, tagged with the run that
@@ -346,9 +355,65 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
                 with (meta_dir / "comparables.json").open("w") as f:
                     json.dump(comp_rows, f, indent=2)
 
+            # Metallurgy — save raw extracted data; feeds DCF recovery assumption
+            if met_data and not met_data.get("not_found"):
+                met_data["extracted_at"] = now
+                met_data["source_run"] = run_id
+                with (meta_dir / "metallurgy.json").open("w") as f:
+                    json.dump(met_data, f, indent=2)
+                # Also save to run dir so report writer can reference it
+                _save_section(project_id, run_id, "14_metallurgy", met_data)
+
+            # Permitting — save permit status, EA status, water rights, timeline
+            if permit_data and not permit_data.get("not_found"):
+                permit_data["extracted_at"] = now
+                permit_data["source_run"] = run_id
+                with (meta_dir / "permitting.json").open("w") as f:
+                    json.dump(permit_data, f, indent=2)
+                _save_section(project_id, run_id, "15_permitting", permit_data)
+
+            # Operator track record — management bios, prior project outcomes
+            if operator_data and not operator_data.get("not_found"):
+                operator_data["extracted_at"] = now
+                operator_data["source_run"] = run_id
+                with (meta_dir / "operator.json").open("w") as f:
+                    json.dump(operator_data, f, indent=2)
+                _save_section(project_id, run_id, "16_operator", operator_data)
+
+            # Capital structure — shares, warrants, streams, royalties, debt
+            if capstruct_data and not capstruct_data.get("not_found"):
+                capstruct_data["extracted_at"] = now
+                capstruct_data["source_run"] = run_id
+                with (meta_dir / "capital_structure.json").open("w") as f:
+                    json.dump(capstruct_data, f, indent=2)
+                _save_section(project_id, run_id, "17_capital_structure", capstruct_data)
+
         except Exception as detail_exc:
             import traceback
             logger.warning("Detail extraction failed (non-fatal): %s", detail_exc)
+
+        # ── Step 2.3: CAD semantic extraction (if CAD/OMF files were loaded) ─
+        if cad_text_parts:
+            try:
+                from engine.llm.extraction.extract_cad_semantics import extract_cad_semantics
+                cad_combined = "\n\n---\n\n".join(cad_text_parts)[:30000]
+
+                async def _extract_cad() -> dict:
+                    r = await extract_cad_semantics(cad_combined, run_id=run_id)
+                    # extract_cad_semantics uses dual runner — handle both response types
+                    if hasattr(r, "reconciled"):
+                        return r.reconciled or {}
+                    return _extract_response_data(r)
+
+                cad_semantics = asyncio.run(_extract_cad())
+                if cad_semantics:
+                    meta_dir = project_root(project_id) / "normalized" / "metadata"
+                    meta_dir.mkdir(parents=True, exist_ok=True)
+                    with (meta_dir / "cad_semantics.json").open("w") as f:
+                        json.dump(cad_semantics, f, indent=2)
+                    _save_section(project_id, run_id, "18_cad_semantics", cad_semantics)
+            except Exception as cad_exc:
+                logger.warning("CAD semantic extraction failed (non-fatal): %s", cad_exc)
 
         # ── Step 2.5: Gather market intelligence (live prices + web search) ─
         update("Gathering market intelligence")
@@ -454,18 +519,38 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
             from engine.economics.dcf_model import run_dcf
             from engine.economics.sensitivity_runner import run_sensitivity
 
+            # Load metallurgy data if extracted — overrides the 90% default recovery
+            _met_override: dict | None = None
+            try:
+                _met_path = project_root(project_id) / "normalized" / "metadata" / "metallurgy.json"
+                if _met_path.exists():
+                    _met_override = json.loads(_met_path.read_text())
+            except Exception:
+                pass
+
             input_book = build_input_book_from_llm(
                 project_id=project_id,
                 economic_assumptions=econ_assumptions,
                 mine_plan=mine_plan,
                 project_facts=facts,
+                metallurgy=_met_override,
             )
             if input_book:
                 cash_flows, summary = run_dcf(input_book)
                 sensitivity = run_sensitivity(input_book)
+
+                # Surface any defaults that were used — analysts must know which
+                # inputs were assumed rather than extracted from the study
+                defaults_used = [n for n in (input_book.notes or []) if "default" in n.lower()]
                 dcf_output = {
                     "model_ran": True,
                     "assumptions_notes": input_book.notes,
+                    "defaults_used": defaults_used,
+                    "defaults_warning": (
+                        f"{len(defaults_used)} input(s) used assumed defaults rather than "
+                        "values extracted from the study documents: "
+                        + "; ".join(defaults_used)
+                    ) if defaults_used else None,
                     "summary": summary.to_dict(),
                     "cash_flow_table": [dataclasses.asdict(cf) for cf in cash_flows],
                     "sensitivity": sensitivity.to_dict(),
@@ -474,6 +559,11 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
                 dcf_output = {
                     "model_ran": False,
                     "reason": "Insufficient data to build economics model from source documents.",
+                    "hint": (
+                        "The DCF model requires a production schedule (annual ore tonnes + grade), "
+                        "capital cost estimate, operating cost, and commodity price assumption. "
+                        "Check that the uploaded documents contain these sections."
+                    ),
                 }
         except Exception as dcf_exc:
             import traceback

@@ -163,14 +163,29 @@ def build_input_book_from_llm(
     economic_assumptions: dict,
     mine_plan: dict,
     project_facts: dict,
+    metallurgy: dict | None = None,
 ) -> EconomicsInputBook | None:
     """
     Convert LLM extraction outputs into an EconomicsInputBook.
 
     Returns None if the data is insufficient to run a meaningful DCF model.
     All applied defaults are recorded in the returned book's `notes` field.
+
+    Args:
+        metallurgy: Optional extracted metallurgy data (from extract_metallurgy).
+                    If provided, the primary commodity's recovery_percent is used
+                    instead of the 90% default.
     """
     defaults: list[str] = []
+
+    # Extract metallurgical recovery from the metallurgy data if available
+    _met_recovery: float | None = None
+    if metallurgy and metallurgy.get("recoveries"):
+        for rec in metallurgy["recoveries"]:
+            pct = _parse_float(rec.get("recovery_percent"))
+            if pct and 0 < pct <= 100:
+                _met_recovery = pct
+                break  # use the first valid recovery (primary commodity)
 
     # ── Price assumptions (needed to identify primary commodity) ─────────────
     econ_data = economic_assumptions.get("economics") or {}
@@ -215,13 +230,18 @@ def build_input_book_from_llm(
                 contained_metal_produced=contained_metal,
             ))
         elif head_grade > 0:
-            defaults.append(f"metallurgical_recovery={_DEFAULT_RECOVERY}% (default)")
+            if _met_recovery is not None:
+                recovery = _met_recovery
+                # No default note — value came from extracted metallurgy data
+            else:
+                recovery = _DEFAULT_RECOVERY
+                defaults.append(f"metallurgical_recovery={_DEFAULT_RECOVERY}% (default — not found in documents)")
             production_schedule.append(ProductionPeriod(
                 year=year,
                 ore_tonnes=ore_tonnes,
                 head_grade=head_grade,
                 grade_unit=grade_unit,
-                recovery_percent=_DEFAULT_RECOVERY,
+                recovery_percent=recovery,
                 commodity=primary_commodity,
                 metal_unit=metal_unit,
             ))
