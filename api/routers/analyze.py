@@ -488,10 +488,26 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
             if macro_ctx.get("analysis"):
                 market_context_block += f"\nMACROECONOMIC CONTEXT:\n{macro_ctx['analysis']}\n"
 
+        # Build supplementary context blocks from the structured extractions
+        # completed in Step 2.2 so the report writer LLMs have full context.
+        supplementary_block = ""
+        try:
+            if met_data and not met_data.get("not_found"):
+                supplementary_block += f"\n\nMETALLURGY (extracted):\n{json.dumps(met_data, indent=2)}"
+            if permit_data and not permit_data.get("not_found"):
+                supplementary_block += f"\n\nPERMITTING STATUS (extracted):\n{json.dumps(permit_data, indent=2)}"
+            if operator_data and not operator_data.get("not_found"):
+                supplementary_block += f"\n\nOPERATOR & MANAGEMENT TRACK RECORD (extracted):\n{json.dumps(operator_data, indent=2)}"
+            if capstruct_data and not capstruct_data.get("not_found"):
+                supplementary_block += f"\n\nCAPITAL STRUCTURE (extracted):\n{json.dumps(capstruct_data, indent=2)}"
+        except Exception:
+            pass  # non-fatal — report writers will work from source docs alone
+
         combined = (
             f"PROJECT FACTS:\n{facts_str}"
             f"\n\nSOURCE DOCUMENTS:\n{truncated}"
             f"{market_context_block}"
+            f"{supplementary_block}"
         )
 
         # ── Step 2.6: Extract economic assumptions + mine plan in parallel ──
@@ -632,12 +648,16 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
         from engine.llm.reporting.assemble_report_sections import assemble_report_sections
 
         assembly_input = json.dumps({
-            "project_facts": facts,
-            "geology": geology,
-            "economics": economics,
-            "risks": risks,
-            "dcf_model": dcf_output,
-            "source_files": source_files,
+            "project_facts":      facts,
+            "geology":            geology,
+            "economics":          economics,
+            "risks":              risks,
+            "dcf_model":          dcf_output,
+            "metallurgy":         met_data if met_data and not met_data.get("not_found") else None,
+            "permitting":         permit_data if permit_data and not permit_data.get("not_found") else None,
+            "operator":           operator_data if operator_data and not operator_data.get("not_found") else None,
+            "capital_structure":  capstruct_data if capstruct_data and not capstruct_data.get("not_found") else None,
+            "source_files":       source_files,
         }, indent=2)
 
         async def _assemble() -> dict:

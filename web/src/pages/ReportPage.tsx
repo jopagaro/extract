@@ -1010,19 +1010,25 @@ const SECTION_CONFIG: Record<string, {
   layer: SectionLayer;
   number?: string;
 }> = {
-  "07_assembly":        { title: "Analyst Narrative", layer: "narrative" },
-  "03_geology":         { title: "Geology & Resources", subtitle: "Deposit geology and resource assessment", layer: "detail", number: "1" },
-  "04_economics":       { title: "Economics & Financial Analysis", subtitle: "Capital costs, operating costs, and financial projections", layer: "detail", number: "2" },
-  "05_risks":           { title: "Risks & Uncertainties", subtitle: "Material risks and mitigations", layer: "detail", number: "3" },
-  "06_dcf_model":       { title: "DCF Financial Model", subtitle: "Computed discounted cash flow analysis", layer: "detail", number: "4" },
-  "08_data_gaps":       { title: "Data Gap Report", subtitle: "Material information gaps and recommended actions", layer: "detail", number: "5" },
-  "09_confidence":      { title: "Confidence Assessment", subtitle: "How much trust to place in each section of this report", layer: "detail", number: "6" },
-  "10_contradictions":  { title: "Contradiction & Consistency Check", subtitle: "Internal contradictions, numeric mismatches, and arithmetic errors", layer: "detail", number: "7" },
-  "13_compliance":      { title: "NI 43-101 / JORC Compliance Check", subtitle: "Assessment against NI 43-101 and JORC Code 2012 reporting requirements", layer: "detail", number: "8" },
-  "00_data_sources":    { title: "Appendix A — Source Documents", subtitle: "All documents used in this analysis", layer: "appendix" },
-  "11_citations":       { title: "Appendix B — Source Citations", subtitle: "Traceability index mapping report claims to source documents", layer: "hidden" },
-  "01_project_facts":   { title: "Project Facts", layer: "hidden" },
-  "02_executive_summary": { title: "Executive Summary", layer: "hidden" }, // legacy — replaced by assembly
+  "07_assembly":           { title: "Analyst Narrative", layer: "narrative" },
+  "03_geology":            { title: "Geology & Resources", subtitle: "Deposit geology and resource assessment", layer: "detail", number: "1" },
+  "04_economics":          { title: "Economics & Financial Analysis", subtitle: "Capital costs, operating costs, and financial projections", layer: "detail", number: "2" },
+  "05_risks":              { title: "Risks & Uncertainties", subtitle: "Material risks and mitigations", layer: "detail", number: "3" },
+  "06_dcf_model":          { title: "DCF Financial Model", subtitle: "Computed discounted cash flow analysis", layer: "detail", number: "4" },
+  "14_metallurgy":         { title: "Metallurgy & Recovery", subtitle: "Process route, testwork results, and recovery assumptions that drive revenue", layer: "detail", number: "5" },
+  "15_permitting":         { title: "Permitting & Regulatory Status", subtitle: "Permit status, environmental assessment, water rights, and Indigenous consultation", layer: "detail", number: "6" },
+  "16_operator":           { title: "Operator & Management Track Record", subtitle: "Management team, prior project outcomes, and company delivery history", layer: "detail", number: "7" },
+  "17_capital_structure":  { title: "Capital Structure & Encumbrances", subtitle: "Shares, warrants, streaming deals, royalty stacks, debt, and funding status", layer: "detail", number: "8" },
+  "18_cad_semantics":      { title: "Mine Design (CAD)", subtitle: "Structured parameters extracted from CAD and 3D model files", layer: "detail", number: "9" },
+  "08_data_gaps":          { title: "Data Gap Report", subtitle: "Material information gaps and recommended actions", layer: "detail", number: "10" },
+  "09_confidence":         { title: "Confidence Assessment", subtitle: "How much trust to place in each section of this report", layer: "detail", number: "11" },
+  "10_contradictions":     { title: "Contradiction & Consistency Check", subtitle: "Internal contradictions, numeric mismatches, and arithmetic errors", layer: "detail", number: "12" },
+  "13_compliance":         { title: "NI 43-101 / JORC Compliance Check", subtitle: "Assessment against NI 43-101 and JORC Code 2012 reporting requirements", layer: "detail", number: "13" },
+  "12_jurisdiction_risk":  { title: "Jurisdiction Profile", subtitle: "Current mining fiscal regime, royalty structure, and regulatory environment", layer: "detail", number: "14" },
+  "00_data_sources":       { title: "Appendix A — Source Documents", subtitle: "All documents used in this analysis", layer: "appendix" },
+  "11_citations":          { title: "Appendix B — Source Citations", subtitle: "Traceability index mapping report claims to source documents", layer: "hidden" },
+  "01_project_facts":      { title: "Project Facts", layer: "hidden" },
+  "02_executive_summary":  { title: "Executive Summary", layer: "hidden" }, // legacy — replaced by assembly
 };
 
 // ── Table of contents ────────────────────────────────────────────────────────
