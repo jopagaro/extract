@@ -227,7 +227,7 @@ def _describe_image_openai(image_data: str, mime_type: str, api_key: str) -> str
 
     client = OpenAI(api_key=api_key)
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-5.4",
         max_tokens=1024,
         messages=[{
             "role": "user",

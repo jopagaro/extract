@@ -25,8 +25,8 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-SEARCH_MODEL  = "gpt-4o-search-preview"
-FALLBACK_MODEL = "gpt-4o"
+SEARCH_MODEL  = "gpt-5-search-api"
+FALLBACK_MODEL = "gpt-5.4"
 
 
 # ---------------------------------------------------------------------------

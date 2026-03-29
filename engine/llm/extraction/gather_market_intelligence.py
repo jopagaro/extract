@@ -25,8 +25,8 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-SEARCH_MODEL = "gpt-4o-search-preview"
-FALLBACK_MODEL = "gpt-4o"
+SEARCH_MODEL = "gpt-5-search-api"
+FALLBACK_MODEL = "gpt-5.4"
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +188,7 @@ def _call_search_model(client, prompt: str) -> str:
     except Exception as primary_exc:
         # Search model not available — fall back to gpt-4o without live search
         logger.warning(
-            "gpt-4o-search-preview unavailable (%s), falling back to gpt-4o "
+            "gpt-5-search-api unavailable (%s), falling back to gpt-5.4 "
             "without web search — results will be based on training data only.",
             primary_exc,
         )

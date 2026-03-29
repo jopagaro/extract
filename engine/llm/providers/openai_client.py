@@ -25,7 +25,7 @@ def _get_model(task: LLMTask) -> str:
     task_models: dict = config.get("task_models", {})
     tier = task_models.get(task.value, "primary")
     models: dict = config.get("models", {})
-    return models.get(tier, {}).get("id", config.get("default_model", "gpt-4o"))
+    return models.get(tier, {}).get("id", config.get("default_model", "gpt-5.4"))
 
 
 def _get_settings() -> dict:
