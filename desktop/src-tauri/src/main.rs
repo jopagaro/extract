@@ -1,26 +1,43 @@
 // Extract — Tauri desktop shell
 //
 // Startup sequence:
-//   1. Locate the API server binary:
-//      · In a production bundle: binaries/api-server/api-server inside Resources
-//      · In dev: spawn uvicorn via the .venv Python (same as before)
-//   2. Set EXTRACT_DATA_DIR and MINING_PROJECTS_ROOT before spawning.
-//   3. Give the server ~1.2 s to bind, then open the Tauri window.
-//   4. Kill the server cleanly when the window closes.
+//   1. Find a free TCP port (tries 8000, then 8001–8099 until one is free).
+//   2. Locate the API server binary (bundled PyInstaller or dev uvicorn).
+//   3. Spawn the server on the chosen port; write the port to {data_dir}/api.port.
+//   4. Expose a `get_api_port` Tauri command so the web UI can discover the port.
+//   5. Give the server ~1.2 s to bind, then open the Tauri window.
+//   6. Kill the server cleanly when the window closes.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
-use tauri::{Manager, RunEvent};
+use tauri::{Manager, RunEvent, State};
 
 // ── State ────────────────────────────────────────────────────────────────────
 
 struct ApiServer(Mutex<Option<Child>>);
+struct ApiPort(u16);
+
+// ── Port discovery ───────────────────────────────────────────────────────────
+
+/// Find a free TCP port, preferring 8000 then 8001–8099.
+fn find_free_port() -> u16 {
+    let candidates = std::iter::once(8000u16).chain(8001..=8099);
+    for port in candidates {
+        if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return port;
+        }
+    }
+    // Last resort: let the OS assign any free port
+    let listener = TcpListener::bind("127.0.0.1:0").expect("No free port found");
+    listener.local_addr().unwrap().port()
+}
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 
@@ -102,18 +119,25 @@ fn spawn_api_server(
     resource_dir: &PathBuf,
     data_dir: &PathBuf,
     projects_dir: &PathBuf,
+    port: u16,
 ) -> Option<Child> {
     std::fs::create_dir_all(data_dir).ok();
     std::fs::create_dir_all(projects_dir).ok();
 
+    // Write the chosen port so the web UI and any external tooling can find it
+    let _ = std::fs::write(data_dir.join("api.port"), port.to_string());
+
+    let port_str = port.to_string();
+
     // ── Production: use the bundled PyInstaller binary ──────────────────────
     if let Some(bin) = find_bundled_binary(resource_dir) {
         let working_dir = bin.parent().unwrap_or(resource_dir).to_path_buf();
-        println!("[Extract] Starting bundled API server: {}", bin.display());
+        println!("[Extract] Starting bundled API server on port {port}: {}", bin.display());
         return Command::new(&bin)
             .current_dir(&working_dir)
             .env("EXTRACT_DATA_DIR",     data_dir)
             .env("MINING_PROJECTS_ROOT", projects_dir)
+            .env("EXTRACT_API_PORT",     &port_str)
             .env("MPLBACKEND",           "Agg")
             .spawn()
             .map_err(|e| eprintln!("[Extract] Failed to start API server: {e}"))
@@ -122,11 +146,10 @@ fn spawn_api_server(
 
     // ── Development: spawn uvicorn via .venv ────────────────────────────────
     if let Some((root, python)) = find_dev_python() {
-        println!("[Extract] Dev mode — spawning uvicorn from {}", root.display());
-        let port = std::env::var("EXTRACT_API_PORT").unwrap_or_else(|_| "8000".to_string());
+        println!("[Extract] Dev mode — spawning uvicorn on port {port}");
         return Command::new(&python)
             .args(["-m", "uvicorn", "api.main:app",
-                   "--host", "127.0.0.1", "--port", &port])
+                   "--host", "127.0.0.1", "--port", &port_str])
             .current_dir(&root)
             .env("EXTRACT_DATA_DIR",     data_dir)
             .env("MINING_PROJECTS_ROOT", projects_dir)
@@ -140,25 +163,36 @@ fn spawn_api_server(
     None
 }
 
+// ── Tauri commands ───────────────────────────────────────────────────────────
+
+/// Called by the React app at startup to discover which port the API is on.
+#[tauri::command]
+fn get_api_port(port: State<ApiPort>) -> u16 {
+    port.0
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 fn main() {
     let data_dir     = app_data_dir();
     let projects_dir = default_projects_dir();
+    let port         = find_free_port();
 
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![get_api_port])
         .setup(move |app| {
             let resource_dir = app
                 .path_resolver()
                 .resource_dir()
                 .unwrap_or_else(|| PathBuf::from("."));
 
-            let child = spawn_api_server(&resource_dir, &data_dir, &projects_dir);
+            let child = spawn_api_server(&resource_dir, &data_dir, &projects_dir, port);
 
             // Give the server time to bind before the webview tries to connect
             thread::sleep(Duration::from_millis(1200));
 
             app.manage(ApiServer(Mutex::new(child)));
+            app.manage(ApiPort(port));
             Ok(())
         })
         .build(tauri::generate_context!())

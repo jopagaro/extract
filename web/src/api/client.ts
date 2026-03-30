@@ -19,16 +19,33 @@ import type {
   RunStatus,
 } from "../types";
 
-// In production (Tauri bundle) there's no Vite proxy, so we hit the API
-// directly on localhost.  In development the Vite proxy forwards /api → port.
-// EXTRACT_API_PORT env var controls the port (default 8000).
-const API_PORT = import.meta.env.VITE_API_PORT ?? "8000";
-const BASE = import.meta.env.PROD
-  ? `http://127.0.0.1:${API_PORT}`
-  : "/api";
+// In production (Tauri bundle) the API port is discovered dynamically via the
+// `get_api_port` Tauri command — the Rust shell finds a free port at startup.
+// In development the Vite proxy forwards /api → 8000 (no port needed client-side).
+
+let _resolvedBase: string | null = null;
+
+async function getBase(): Promise<string> {
+  if (_resolvedBase) return _resolvedBase;
+  if (!import.meta.env.PROD) {
+    _resolvedBase = "/api";
+    return _resolvedBase;
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { invoke } = await import("@tauri-apps/api/tauri") as any;
+    const port: number = await invoke("get_api_port");
+    _resolvedBase = `http://127.0.0.1:${port}`;
+  } catch {
+    // Fallback for non-Tauri prod builds (e.g. plain browser)
+    _resolvedBase = "http://127.0.0.1:8000";
+  }
+  return _resolvedBase;
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const base = await getBase();
+  const res = await fetch(`${base}${path}`, {
     headers: { "Content-Type": "application/json", ...init?.headers },
     ...init,
   });
@@ -93,7 +110,8 @@ export async function uploadFiles(
 ): Promise<IngestResponse> {
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
-  const res = await fetch(`${BASE}/projects/${projectId}/files`, {
+  const base = await getBase();
+  const res = await fetch(`${base}/projects/${projectId}/files`, {
     method: "POST",
     body: form,
   });
@@ -523,7 +541,8 @@ export async function saveSettings(body: AppSettings): Promise<AppSettings> {
 // ── License ───────────────────────────────────────────────────────────────────
 
 export async function activateLicense(licenseKey: string): Promise<{ success: boolean; message: string }> {
-  const res = await fetch(`${BASE}/activate`, {
+  const base = await getBase();
+  const res = await fetch(`${base}/activate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ license_key: licenseKey }),
@@ -535,10 +554,11 @@ export async function activateLicense(licenseKey: string): Promise<{ success: bo
   return res.json();
 }
 
-export function exportUrl(
+export async function exportUrl(
   projectId: string,
   runId: string,
   format: "json" | "md" | "txt" | "pptx" = "md"
-): string {
-  return `${BASE}/projects/${projectId}/reports/${runId}/export?format=${format}`;
+): Promise<string> {
+  const base = await getBase();
+  return `${base}/projects/${projectId}/reports/${runId}/export?format=${format}`;
 }
