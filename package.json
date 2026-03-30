@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "pnpm --filter web dev",
     "build": "pnpm --filter web build",
-    "desktop": "pnpm --filter desktop tauri dev"
+    "desktop": "pnpm --filter desktop tauri dev",
+    "tauri:before-build": "bash scripts/ensure_sidecar.sh && pnpm --filter web build"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild"]

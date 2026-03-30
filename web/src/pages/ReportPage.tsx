@@ -1,9 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { getReport } from "../api/client";
-
-// Same base URL logic as client.ts — no Vite proxy in the Tauri bundle
-const API_BASE = import.meta.env.PROD ? "http://127.0.0.1:8000" : "/api";
+import { getApiBase, getReport } from "../api/client";
 import { useToast } from "../components/shared/Toast";
 import type { ReportContent } from "../types";
 
@@ -14,7 +11,8 @@ async function downloadReport(
   runId: string,
   format: "json" | "md" | "txt" | "pdf" | "pptx"
 ) {
-  const url = `${API_BASE}/projects/${projectId}/reports/${runId}/export?format=${format}`;
+  const base = await getApiBase();
+  const url = `${base}/projects/${projectId}/reports/${runId}/export?format=${format}`;
   const res = await fetch(url);
   if (!res.ok) {
     alert("Export failed — check that the server is running.");
@@ -72,9 +70,10 @@ function KeyCallouts({ callouts }: { callouts: { label: string; value: string; c
   );
 }
 
-function NarrativeSection({ assembly, projectId }: {
+function NarrativeSection({ assembly, projectId, apiBase }: {
   assembly: Record<string, unknown>;
   projectId?: string;
+  apiBase: string;
 }) {
   const narrative = assembly.narrative as string | undefined;
   const conclusion = assembly.analyst_conclusion as string | undefined;
@@ -94,7 +93,7 @@ function NarrativeSection({ assembly, projectId }: {
         <div className="report-narrative-body">
           {paragraphs.map((para, i) => {
             if (para.includes("{{FIGURE:") && projectId) {
-              return <React.Fragment key={i}>{renderProseWithFigures(para, projectId)}</React.Fragment>;
+              return <React.Fragment key={i}>{renderProseWithFigures(para, projectId, apiBase)}</React.Fragment>;
             }
             return <p key={i} className="report-narrative-para">{para}</p>;
           })}
@@ -158,7 +157,7 @@ function DataTable({ items }: { items: Record<string, unknown>[] }) {
 // Non-global: safe to reuse for both detection (.includes fast path) and extraction.
 const FIGURE_RE = /\{\{FIGURE:\s*([^|]+)\|([^}]+)\}\}/;
 
-function renderProseWithFigures(text: string, projectId: string): React.ReactNode[] {
+function renderProseWithFigures(text: string, projectId: string, apiBase: string): React.ReactNode[] {
   const parts = text.split(/(\{\{FIGURE:\s*[^|]+\|[^}]+\}\})/);
   return parts.map((part, i) => {
     const match = part.match(FIGURE_RE);
@@ -168,7 +167,7 @@ function renderProseWithFigures(text: string, projectId: string): React.ReactNod
       return (
         <figure key={i} style={{ margin: "32px 0", textAlign: "center" }}>
           <img
-            src={`${API_BASE}/projects/${projectId}/renders/${filename}`}
+            src={`${apiBase}/projects/${projectId}/renders/${filename}`}
             alt={caption}
             style={{ maxWidth: "100%", borderRadius: 8, border: "1px solid var(--border)" }}
             onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
@@ -190,11 +189,12 @@ function renderProseWithFigures(text: string, projectId: string): React.ReactNod
   }).filter(Boolean) as React.ReactNode[];
 }
 
-function ProseField({ label, value, showLabel, projectId }: {
+function ProseField({ label, value, showLabel, projectId, apiBase }: {
   label: string;
   value: string;
   showLabel: boolean;
   projectId?: string;
+  apiBase: string;
 }) {
   return (
     <div className="report-prose-para">
@@ -202,14 +202,14 @@ function ProseField({ label, value, showLabel, projectId }: {
         <div className="report-para-label">{label.replace(/_/g, " ")}</div>
       )}
       {value.includes("{{FIGURE:") && projectId
-        ? renderProseWithFigures(value, projectId)
+        ? renderProseWithFigures(value, projectId, apiBase)
         : <p>{value}</p>
       }
     </div>
   );
 }
 
-function SpecialistSection({ data, projectId }: { data: Record<string, unknown>; projectId?: string }) {
+function SpecialistSection({ data, projectId, apiBase }: { data: Record<string, unknown>; projectId?: string; apiBase: string }) {
   const entries = Object.entries(data).filter(([, v]) => v !== null && v !== undefined);
   const prose = entries.filter(([, v]) => typeof v === "string" && (v as string).length > 60);
   const lists = entries.filter(([, v]) => Array.isArray(v) && (v as unknown[]).length > 0);
@@ -221,7 +221,7 @@ function SpecialistSection({ data, projectId }: { data: Record<string, unknown>;
   return (
     <div className="report-specialist-body">
       {prose.map(([k, v]) => (
-        <ProseField key={k} label={k} value={String(v)} showLabel={!isSingleProse} projectId={projectId} />
+        <ProseField key={k} label={k} value={String(v)} showLabel={!isSingleProse} projectId={projectId} apiBase={apiBase} />
       ))}
 
       {lists.map(([k, v]) => {
@@ -527,10 +527,12 @@ function ImageGallery({
   projectId,
   imageFiles,
   renderFiles,
+  apiBase,
 }: {
   projectId: string;
   imageFiles: string[];
   renderFiles: string[];
+  apiBase: string;
 }) {
   const all = [...new Set([...imageFiles, ...renderFiles])];
   if (!all.length) return null;
@@ -541,7 +543,7 @@ function ImageGallery({
       {all.map((name) => (
         <figure key={name} className="report-image-figure">
           <img
-            src={`${API_BASE}/projects/${projectId}/files/${encodeURIComponent(name)}/content`}
+            src={`${apiBase}/projects/${projectId}/files/${encodeURIComponent(name)}/content`}
             alt={name}
             className="report-image"
             loading="lazy"
@@ -556,9 +558,11 @@ function ImageGallery({
 function DataSourcesSection({
   projectId,
   data,
+  apiBase,
 }: {
   projectId: string;
   data: Record<string, unknown>;
+  apiBase: string;
 }) {
   const files = (data.source_files as string[]) ?? [];
   const imageFiles = (data.image_files as string[]) ?? [];
@@ -582,7 +586,7 @@ function DataSourcesSection({
           </div>
         </>
       )}
-      <ImageGallery projectId={projectId} imageFiles={imageFiles} renderFiles={renderFiles} />
+      <ImageGallery projectId={projectId} imageFiles={imageFiles} renderFiles={renderFiles} apiBase={apiBase} />
       {data.generated_at != null && (
         <div style={{ fontSize: 12, color: "var(--r-ink-4)", marginTop: 20 }}>
           Generated: {new Date(String(data.generated_at)).toLocaleString()}
@@ -942,11 +946,13 @@ function CitationPanel({
   sectionKey,
   citations,
   projectId,
+  apiBase,
   onClose,
 }: {
   sectionKey: string;
   citations: Citation[];
   projectId: string;
+  apiBase: string;
   onClose: () => void;
 }) {
   const confLabel: Record<string, string> = { direct: "Direct", inferred: "Inferred", not_found: "Not found" };
@@ -983,7 +989,7 @@ function CitationPanel({
               {c.confidence !== "not_found" ? (
                 <a
                   className="citation-source-link"
-                  href={`${API_BASE}/projects/${projectId}/files/${encodeURIComponent(c.source_file)}/content`}
+                  href={`${apiBase}/projects/${projectId}/files/${encodeURIComponent(c.source_file)}/content`}
                   target="_blank"
                   rel="noreferrer"
                 >
@@ -1066,6 +1072,7 @@ export default function ReportPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [report, setReport] = useState<ReportContent | null>(null);
+  const [apiBase, setApiBase] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [scrollPct, setScrollPct] = useState(0);
   const [activeCitationSection, setActiveCitationSection] = useState<string | null>(null);
@@ -1077,11 +1084,26 @@ export default function ReportPage() {
   const rid = runId!;
 
   useEffect(() => {
-    getReport(id, rid)
-      .then(setReport)
-      .catch((err) => toast(err.message ?? "Could not load report", "error"))
-      .finally(() => setLoading(false));
-  }, [id, rid]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const base = await getApiBase();
+        if (cancelled) return;
+        setApiBase(base);
+        const rep = await getReport(id, rid);
+        if (!cancelled) setReport(rep);
+      } catch (err: unknown) {
+        if (!cancelled) {
+          toast(err instanceof Error ? err.message : "Could not load report", "error");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, rid, toast]);
 
   // Scroll progress bar
   const handleScroll = useCallback(() => {
@@ -1091,6 +1113,25 @@ export default function ReportPage() {
     const pct = scrollHeight <= clientHeight ? 100 : (scrollTop / (scrollHeight - clientHeight)) * 100;
     setScrollPct(Math.min(100, Math.round(pct)));
   }, []);
+
+  // Citation data — must be derived before any conditional returns (Rules of Hooks)
+  const allCitations = useMemo(() => {
+    const citData = report?.sections["11_citations"] as Record<string, unknown> | undefined;
+    return (citData?.citations as Citation[]) ?? [];
+  }, [report]);
+
+  const citationsBySection = useMemo(() => {
+    const map: Record<string, Citation[]> = {};
+    for (const c of allCitations) {
+      (map[c.section] ??= []).push(c);
+    }
+    return map;
+  }, [allCitations]);
+
+  const notFoundCount = useMemo(
+    () => allCitations.filter((c) => c.confidence === "not_found").length,
+    [allCitations]
+  );
 
   if (loading) {
     return (
@@ -1114,27 +1155,8 @@ export default function ReportPage() {
     );
   }
 
-  const sections = report.sections;
+  const sections = report?.sections ?? {};
   const projectName = id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-
-  // Citation data — sourced from 11_citations section
-  const allCitations = useMemo(() => {
-    const citData = sections["11_citations"] as Record<string, unknown> | undefined;
-    return (citData?.citations as Citation[]) ?? [];
-  }, [sections]);
-
-  const citationsBySection = useMemo(() => {
-    const map: Record<string, Citation[]> = {};
-    for (const c of allCitations) {
-      (map[c.section] ??= []).push(c);
-    }
-    return map;
-  }, [allCitations]);
-
-  const notFoundCount = useMemo(
-    () => allCitations.filter((c) => c.confidence === "not_found").length,
-    [allCitations]
-  );
   const generatedAt = new Date().toLocaleDateString("en-US", {
     month: "long", day: "numeric", year: "numeric",
   });
@@ -1148,13 +1170,13 @@ export default function ReportPage() {
   const renderSection = (key: string) => {
     const content = sections[key];
     if (key === "00_data_sources") {
-      return <DataSourcesSection projectId={id} data={content as Record<string, unknown>} />;
+      return <DataSourcesSection projectId={id} data={content as Record<string, unknown>} apiBase={apiBase} />;
     }
     if (key === "06_dcf_model") {
       return <DcfSection data={content as Record<string, unknown>} />;
     }
     if (key === "07_assembly") {
-      return <NarrativeSection assembly={content as Record<string, unknown>} projectId={id} />;
+      return <NarrativeSection assembly={content as Record<string, unknown>} projectId={id} apiBase={apiBase} />;
     }
     if (key === "08_data_gaps") {
       return <DataGapSection data={content as Record<string, unknown>} />;
@@ -1172,7 +1194,7 @@ export default function ReportPage() {
       return <ComplianceSection data={content as Record<string, unknown>} />;
     }
     if (typeof content === "object" && content !== null && !Array.isArray(content)) {
-      return <SpecialistSection data={content as Record<string, unknown>} projectId={id} />;
+      return <SpecialistSection data={content as Record<string, unknown>} projectId={id} apiBase={apiBase} />;
     }
     return <pre style={{ fontSize: 12, overflow: "auto" }}>{JSON.stringify(content, null, 2)}</pre>;
   };
@@ -1201,6 +1223,7 @@ export default function ReportPage() {
           sectionKey={activeCitationSection}
           citations={citationsBySection[activeCitationSection] ?? []}
           projectId={id}
+          apiBase={apiBase}
           onClose={() => setActiveCitationSection(null)}
         />
       )}

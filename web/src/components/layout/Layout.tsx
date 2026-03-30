@@ -108,6 +108,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   // Extract active project ID from URL
   const match = location.pathname.match(/^\/projects\/([^/]+)/);
   const activeProjectId = match?.[1] ?? null;
+  const isReportRoute = /\/report\//.test(location.pathname);
 
   // Fetch projects list — refresh whenever we land on /projects
   useEffect(() => {
@@ -193,7 +194,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className="main-content">{children}</main>
+      <main className={`main-content${isReportRoute ? " main-content--report" : ""}`}>{children}</main>
     </div>
   );
 }

@@ -251,6 +251,29 @@ body {
   max-width: calc(100vw - 240px);
 }
 
+/* Set on <main> when viewing a report (Layout) — avoids :has() on older WebKit */
+.main-content--report {
+  padding: 0;
+  max-width: none;
+  overflow: visible;
+}
+
+/* Loading indicator (used across project + report viewer) */
+@keyframes spinner-rotate {
+  to { transform: rotate(360deg); }
+}
+.spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spinner-rotate 0.65s linear infinite;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
 /* ─── Page Headers ─────────────────────────────────────────────────────── */
 .page-header {
   display: flex;
@@ -859,11 +882,18 @@ body {
 
 .report-full {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  min-height: 100vh;
   background: var(--bg);
-  z-index: 200;
+  z-index: 10000;
   overflow-y: auto;
   overflow-x: hidden;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
 }
 
 .report-progress-bar {
@@ -872,7 +902,7 @@ body {
   left: 0;
   height: 2px;
   background: var(--accent);
-  z-index: 201;
+  z-index: 10001;
   transition: width 0.1s linear;
   border-radius: 0 2px 2px 0;
 }

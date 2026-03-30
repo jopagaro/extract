@@ -1,5 +1,6 @@
 // API client — thin wrapper around the FastAPI backend
 
+import { invoke } from "@tauri-apps/api/tauri";
 import type {
   AppSettings,
   Comparable,
@@ -19,15 +20,48 @@ import type {
   RunStatus,
 } from "../types";
 
-// In production (Tauri bundle) the Rust shell always binds on the first free
-// port starting at 8000, so 8000 is effectively guaranteed unless something
-// else is already squatting on it.  In development the Vite proxy forwards
-// /api → 8000 transparently.
+// Tauri spawns the sidecar on the first free port in 8000–8099 and exposes
+// `get_api_port`. The web UI must use that port; hardcoding 8000 breaks when
+// another process holds 8000 (Vite’s /api proxy would also point at the wrong
+// process). Plain browser dev still uses the Vite proxy; non-Tauri production
+// build keeps 127.0.0.1:8000.
 
-const BASE = import.meta.env.PROD ? "http://127.0.0.1:8000" : "/api";
+let apiBasePromise: Promise<string> | null = null;
+
+function isTauriShell(): boolean {
+  return typeof window !== "undefined" && !!(window as unknown as { __TAURI__?: unknown }).__TAURI__;
+}
+
+async function computeApiBase(): Promise<string> {
+  if (isTauriShell()) {
+    try {
+      const port = await invoke<number>("get_api_port");
+      if (typeof port === "number" && port > 0) {
+        return `http://127.0.0.1:${port}`;
+      }
+    } catch {
+      /* fall through */
+    }
+    return "http://127.0.0.1:8000";
+  }
+  if (import.meta.env.PROD) {
+    return "http://127.0.0.1:8000";
+  }
+  return "/api";
+}
+
+export async function getApiBase(): Promise<string> {
+  if (!apiBasePromise) {
+    apiBasePromise = computeApiBase().catch((err) => {
+      apiBasePromise = null;
+      throw err;
+    });
+  }
+  return apiBasePromise;
+}
 
 async function getBase(): Promise<string> {
-  return BASE;
+  return getApiBase();
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

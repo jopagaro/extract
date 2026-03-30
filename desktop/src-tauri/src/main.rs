@@ -17,6 +17,7 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
+use tauri::api::dialog::message;
 use tauri::{Manager, RunEvent, State};
 
 // ── State ────────────────────────────────────────────────────────────────────
@@ -187,6 +188,16 @@ fn main() {
                 .unwrap_or_else(|| PathBuf::from("."));
 
             let child = spawn_api_server(&resource_dir, &data_dir, &projects_dir, port);
+
+            if child.is_none() {
+                let _ = message(
+                    None::<&tauri::Window>,
+                    "Extract — API server not running",
+                    "The Python API bundle was not found or could not be started. The UI will not load projects.\n\n\
+If you are developing: run from the repo with `pnpm --filter desktop dev` (uses .venv + uvicorn).\n\n\
+To build the desktop app: from the project root run `./scripts/build_sidecar.sh`, then `pnpm tauri build` from desktop/.",
+                );
+            }
 
             // Give the server time to bind before the webview tries to connect
             thread::sleep(Duration::from_millis(1200));
