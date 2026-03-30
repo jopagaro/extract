@@ -20,9 +20,11 @@ import type {
 } from "../types";
 
 // In production (Tauri bundle) there's no Vite proxy, so we hit the API
-// directly on localhost.  In development the Vite proxy forwards /api → 8000.
+// directly on localhost.  In development the Vite proxy forwards /api → port.
+// EXTRACT_API_PORT env var controls the port (default 8000).
+const API_PORT = import.meta.env.VITE_API_PORT ?? "8000";
 const BASE = import.meta.env.PROD
-  ? "http://127.0.0.1:8000"
+  ? `http://127.0.0.1:${API_PORT}`
   : "/api";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

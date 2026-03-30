@@ -123,9 +123,10 @@ fn spawn_api_server(
     // ── Development: spawn uvicorn via .venv ────────────────────────────────
     if let Some((root, python)) = find_dev_python() {
         println!("[Extract] Dev mode — spawning uvicorn from {}", root.display());
+        let port = std::env::var("EXTRACT_API_PORT").unwrap_or_else(|_| "8000".to_string());
         return Command::new(&python)
             .args(["-m", "uvicorn", "api.main:app",
-                   "--host", "127.0.0.1", "--port", "8000"])
+                   "--host", "127.0.0.1", "--port", &port])
             .current_dir(&root)
             .env("EXTRACT_DATA_DIR",     data_dir)
             .env("MINING_PROJECTS_ROOT", projects_dir)
