@@ -19,28 +19,15 @@ import type {
   RunStatus,
 } from "../types";
 
-// In production (Tauri bundle) the API port is discovered dynamically via the
-// `get_api_port` Tauri command — the Rust shell finds a free port at startup.
-// In development the Vite proxy forwards /api → 8000 (no port needed client-side).
+// In production (Tauri bundle) the Rust shell always binds on the first free
+// port starting at 8000, so 8000 is effectively guaranteed unless something
+// else is already squatting on it.  In development the Vite proxy forwards
+// /api → 8000 transparently.
 
-let _resolvedBase: string | null = null;
+const BASE = import.meta.env.PROD ? "http://127.0.0.1:8000" : "/api";
 
 async function getBase(): Promise<string> {
-  if (_resolvedBase) return _resolvedBase;
-  if (!import.meta.env.PROD) {
-    _resolvedBase = "/api";
-    return _resolvedBase;
-  }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { invoke } = await import("@tauri-apps/api/tauri") as any;
-    const port: number = await invoke("get_api_port");
-    _resolvedBase = `http://127.0.0.1:${port}`;
-  } catch {
-    // Fallback for non-Tauri prod builds (e.g. plain browser)
-    _resolvedBase = "http://127.0.0.1:8000";
-  }
-  return _resolvedBase;
+  return BASE;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
