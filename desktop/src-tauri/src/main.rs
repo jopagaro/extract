@@ -202,8 +202,27 @@ To build the desktop app: from the project root run `./scripts/build_sidecar.sh`
             // Give the server time to bind before the webview tries to connect
             thread::sleep(Duration::from_millis(1200));
 
+            // If the sidecar didn't start on `port` but something is already
+            // serving on 8000 (e.g. a terminal dev uvicorn), use that instead
+            // so the UI can reach the API.
+            let effective_port = if std::net::TcpStream::connect_timeout(
+                &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+                Duration::from_millis(300),
+            ).is_ok() {
+                port
+            } else if port != 8000 && std::net::TcpStream::connect_timeout(
+                &std::net::SocketAddr::from(([127, 0, 0, 1], 8000)),
+                Duration::from_millis(300),
+            ).is_ok() {
+                println!("[Extract] Sidecar not responding on {port}, using port 8000");
+                let _ = std::fs::write(data_dir.join("api.port"), "8000");
+                8000u16
+            } else {
+                port
+            };
+
             app.manage(ApiServer(Mutex::new(child)));
-            app.manage(ApiPort(port));
+            app.manage(ApiPort(effective_port));
             Ok(())
         })
         .build(tauri::generate_context!())

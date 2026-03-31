@@ -5,7 +5,7 @@
   },
   "build": {
     "beforeDevCommand": "cd ../web && pnpm dev",
-    "beforeBuildCommand": "cd ../.. && pnpm run tauri:before-build",
+    "beforeBuildCommand": "cd ../web && pnpm build",
     "devPath": "http://localhost:5173",
     "distDir": "../../web/dist"
   },
