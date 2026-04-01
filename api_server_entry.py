@@ -52,11 +52,15 @@ def main() -> None:
         os.environ["MINING_PROJECTS_ROOT"] = str(projects_dir)
 
     # ── Start the API server ──────────────────────────────────────────────────
+    # Tauri passes EXTRACT_API_PORT so we bind on the port it chose;
+    # default to 8000 if running standalone.
+    port = int(os.getenv("EXTRACT_API_PORT", "8000"))
+
     import uvicorn
     uvicorn.run(
         "api.main:app",
         host="127.0.0.1",
-        port=8000,
+        port=port,
         log_level="warning",
         # Disable reload — not compatible with frozen executables
         reload=False,
