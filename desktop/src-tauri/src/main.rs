@@ -101,6 +101,10 @@ fn find_dev_python() -> Option<(PathBuf, PathBuf)> {
 
     for _ in 0..14 {
         if dir.join("pyproject.toml").exists() {
+            // Windows venv lives in Scripts/, Unix in bin/
+            #[cfg(windows)]
+            let python = dir.join(".venv/Scripts/python.exe");
+            #[cfg(not(windows))]
             let python = dir.join(".venv/bin/python");
             if python.exists() {
                 return Some((dir, python));
