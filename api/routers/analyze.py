@@ -10,6 +10,7 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import threading
@@ -19,6 +20,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from engine.core.paths import project_root, run_root
@@ -92,6 +94,53 @@ def _save_section(project_id: str, run_id: str, section_key: str, data: dict) ->
         json.dump(data, f, indent=2)
 
 
+def _compute_doc_hash(raw_files: list) -> str:
+    """Fast hash of file names + sizes + mtimes — invalidates when files change."""
+    h = hashlib.sha256()
+    for f in sorted(raw_files, key=lambda p: p.name):
+        stat = f.stat()
+        h.update(f.name.encode())
+        h.update(str(stat.st_size).encode())
+        h.update(str(int(stat.st_mtime)).encode())
+    return h.hexdigest()
+
+
+def _find_cached_section(project_id: str, doc_hash: str, section_key: str) -> dict | None:
+    """Return a section result from the most recent completed run with the same doc hash."""
+    runs_dir = project_root(project_id) / "runs"
+    if not runs_dir.exists():
+        return None
+    for run_dir in sorted(runs_dir.iterdir(), reverse=True):
+        status_file = run_dir / "run_status.json"
+        if not status_file.exists():
+            continue
+        try:
+            status = json.loads(status_file.read_text())
+            if status.get("status") != "complete":
+                continue
+            if status.get("doc_hash") != doc_hash:
+                continue
+            section_file = run_dir / f"{section_key}.json"
+            if section_file.exists():
+                return json.loads(section_file.read_text())
+        except Exception:
+            continue
+    return None
+
+
+async def _with_retry(coro_fn, retries: int = 3, base_delay: float = 2.0):
+    """Call coro_fn() up to `retries` times with exponential backoff."""
+    last_exc: Exception = RuntimeError("No attempts made")
+    for attempt in range(retries):
+        try:
+            return await coro_fn()
+        except Exception as exc:
+            last_exc = exc
+            if attempt < retries - 1:
+                await asyncio.sleep(base_delay * (2 ** attempt))
+    raise last_exc
+
+
 def _extract_response_data(response) -> dict:
     """Safely extract dict from LLMResponse or DualLLMResponse."""
     if hasattr(response, "merged"):
@@ -135,6 +184,13 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
             update("failed", status="failed",
                    error="No files found. Upload documents first.")
             return
+
+        # Compute a hash of the source files so we can skip re-extracting
+        # unchanged documents on subsequent runs (saves LLM cost + time).
+        doc_hash = _compute_doc_hash(raw_files)
+        current = _load_run_status(project_id, run_id)
+        current["doc_hash"] = doc_hash
+        _save_run_status(project_id, run_id, current)
 
         from engine.core.document_loader import load_document
 
@@ -199,16 +255,19 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
                 logger.warning("Could not read renders manifest: %s", fig_exc)
 
         # ── Step 2: Extract project facts ──────────────────────────────────
-        update("Extracting project facts")
+        facts = _find_cached_section(project_id, doc_hash, "01_project_facts")
+        if facts is not None:
+            update("Extracting project facts (cached)")
+        else:
+            update("Extracting project facts")
+            from engine.llm.extraction.extract_project_facts import extract_project_facts
 
-        from engine.llm.extraction.extract_project_facts import extract_project_facts
+            async def _extract() -> dict:
+                r = await _with_retry(lambda: extract_project_facts(truncated, run_id=run_id))
+                return _extract_response_data(r)
 
-        async def _extract() -> dict:
-            r = await extract_project_facts(truncated, run_id=run_id)
-            return _extract_response_data(r)
-
-        facts = asyncio.run(_extract())
-        _save_section(project_id, run_id, "01_project_facts", facts)
+            facts = asyncio.run(_extract())
+            _save_section(project_id, run_id, "01_project_facts", facts)
 
         facts_str = json.dumps(facts, indent=2)
 
@@ -249,6 +308,11 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
         # Results persist to normalized/metadata/ across runs.
         update("Extracting resources, metallurgy, permitting, capital structure, and operator data")
         try:
+            # Check cache for each extraction independently — allows partial cache hits
+            _cached_keys = ["14_metallurgy", "15_permitting", "16_operator", "17_capital_structure"]
+            _cached = {k: _find_cached_section(project_id, doc_hash, k) for k in _cached_keys}
+            _all_cached = all(v is not None for v in _cached.values())
+
             from engine.llm.extraction.extract_resource_table import extract_resource_table
             from engine.llm.extraction.extract_royalties import extract_royalties
             from engine.llm.extraction.extract_comparable_transactions import extract_comparable_transactions
@@ -258,16 +322,31 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
             from engine.llm.extraction.extract_capital_structure import extract_capital_structure
 
             async def _extract_detail_data():
-                results = await asyncio.gather(
-                    extract_resource_table(truncated, run_id=run_id),
-                    extract_royalties(truncated, run_id=run_id),
-                    extract_comparable_transactions(truncated, run_id=run_id),
-                    extract_metallurgy(truncated, run_id=run_id),
-                    extract_permitting(truncated, run_id=run_id),
-                    extract_operator_track_record(truncated, run_id=run_id),
-                    extract_capital_structure(truncated, run_id=run_id),
-                )
-                return tuple(_extract_response_data(r) for r in results)
+                # Always re-extract resources/royalties/comparables (they go into the DB)
+                # Cache-hit the expensive specialist extractions when docs haven't changed
+                coros = [
+                    _with_retry(lambda: extract_resource_table(truncated, run_id=run_id)),
+                    _with_retry(lambda: extract_royalties(truncated, run_id=run_id)),
+                    _with_retry(lambda: extract_comparable_transactions(truncated, run_id=run_id)),
+                ]
+                async def _passthrough(v):
+                    return v
+
+                # For each specialist extraction: use cache or run LLM
+                for key, fn in [
+                    ("14_metallurgy",         lambda: extract_metallurgy(truncated, run_id=run_id)),
+                    ("15_permitting",          lambda: extract_permitting(truncated, run_id=run_id)),
+                    ("16_operator",            lambda: extract_operator_track_record(truncated, run_id=run_id)),
+                    ("17_capital_structure",   lambda: extract_capital_structure(truncated, run_id=run_id)),
+                ]:
+                    cached_val = _cached.get(key)
+                    if cached_val is not None:
+                        coros.append(_passthrough(cached_val))
+                    else:
+                        coros.append(_with_retry(fn))
+                results = await asyncio.gather(*coros)
+                return tuple(r if isinstance(r, dict) else _extract_response_data(r)
+                             for r in results)
 
             (res_data, roy_data, comp_data,
              met_data, permit_data, operator_data, capstruct_data) = asyncio.run(_extract_detail_data())
@@ -608,29 +687,17 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
         )
 
         async def _write_sections() -> tuple[dict, dict, dict, dict, dict, dict, dict]:
-            # Inject figures context into geology and economics prompts when available
             combined_with_figs = combined + figures_context if figures_context else combined
-            (
-                geology, economics, risks,
-                gaps_resp, confidence_resp, contradictions_resp, compliance_resp,
-            ) = await asyncio.gather(
-                write_geology_section(combined_with_figs, run_id=run_id),
-                write_economics_section(combined_with_figs, run_id=run_id, extra_context=dcf_context),
-                write_risk_section(combined, run_id=run_id),
-                flag_missing_data(combined, run_id=run_id),
-                assess_confidence(combined, run_id=run_id),
-                flag_contradictions(combined, run_id=run_id, extra_context=dcf_context),
-                check_compliance(combined, run_id=run_id),
+            results = await asyncio.gather(
+                _with_retry(lambda: write_geology_section(combined_with_figs, run_id=run_id)),
+                _with_retry(lambda: write_economics_section(combined_with_figs, run_id=run_id, extra_context=dcf_context)),
+                _with_retry(lambda: write_risk_section(combined, run_id=run_id)),
+                _with_retry(lambda: flag_missing_data(combined, run_id=run_id)),
+                _with_retry(lambda: assess_confidence(combined, run_id=run_id)),
+                _with_retry(lambda: flag_contradictions(combined, run_id=run_id, extra_context=dcf_context)),
+                _with_retry(lambda: check_compliance(combined, run_id=run_id)),
             )
-            return (
-                _extract_response_data(geology),
-                _extract_response_data(economics),
-                _extract_response_data(risks),
-                _extract_response_data(gaps_resp),
-                _extract_response_data(confidence_resp),
-                _extract_response_data(contradictions_resp),
-                _extract_response_data(compliance_resp),
-            )
+            return tuple(_extract_response_data(r) for r in results)
 
         geology, economics, risks, data_gaps, confidence, contradictions, compliance = asyncio.run(_write_sections())
 
@@ -661,7 +728,7 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
         }, indent=2)
 
         async def _assemble() -> dict:
-            r = await assemble_report_sections(assembly_input, run_id=run_id)
+            r = await _with_retry(lambda: assemble_report_sections(assembly_input, run_id=run_id))
             return _extract_response_data(r)
 
         assembly = asyncio.run(_assemble())
@@ -684,11 +751,11 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
         citations_data: dict = {}
         try:
             async def _cite() -> dict:
-                r = await extract_citations(
-                    truncated,  # source documents with [Source: filename] labels
+                r = await _with_retry(lambda: extract_citations(
+                    truncated,
                     run_id=run_id,
                     report_sections=report_sections_for_citation,
-                )
+                ))
                 return _extract_response_data(r)
 
             citations_data = asyncio.run(_cite())
@@ -805,6 +872,43 @@ def get_run(project_id: str, run_id: str) -> RunStatus:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
     outputs = _collect_output_files(project_id, run_id)
     return RunStatus(**data, output_files=outputs)
+
+
+@router.get("/projects/{project_id}/runs/{run_id}/stream")
+async def stream_run_status(project_id: str, run_id: str) -> StreamingResponse:
+    """Server-sent events stream — pushes run status updates as they happen.
+
+    The client subscribes with `new EventSource(url)`.  Each event is a JSON
+    object matching the RunStatus schema.  The stream closes automatically when
+    the run reaches `complete` or `failed`.
+    """
+    async def _event_gen():
+        last_step: str | None = None
+        last_status: str | None = None
+        idle_ticks = 0
+        while True:
+            data = _load_run_status(project_id, run_id)
+            step   = data.get("step")
+            status = data.get("status")
+            # Only push when something changed
+            if step != last_step or status != last_status:
+                yield f"data: {json.dumps(data)}\n\n"
+                last_step, last_status = step, status
+                idle_ticks = 0
+            if status in ("complete", "failed"):
+                break
+            # Send a keep-alive comment every 15 s so proxies don't close the connection
+            idle_ticks += 1
+            if idle_ticks >= 30:  # 30 × 0.5 s = 15 s
+                yield ": keep-alive\n\n"
+                idle_ticks = 0
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        _event_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.delete("/projects/{project_id}/runs/{run_id}", status_code=204)

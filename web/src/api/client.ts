@@ -185,6 +185,36 @@ export async function deleteRun(projectId: string, runId: string): Promise<void>
   return request(`/projects/${projectId}/runs/${runId}`, { method: "DELETE" });
 }
 
+/**
+ * Subscribe to live run status updates via Server-Sent Events.
+ * Returns a cleanup function — call it to close the connection.
+ * Falls back silently if EventSource is unavailable.
+ */
+export async function streamRunStatus(
+  projectId: string,
+  runId: string,
+  onUpdate: (status: RunStatus) => void,
+  onError?: () => void,
+): Promise<() => void> {
+  const base = await getApiBase();
+  const url = `${base}/projects/${projectId}/runs/${runId}/stream`;
+
+  if (typeof EventSource === "undefined") {
+    getRun(projectId, runId).then(onUpdate).catch(() => onError?.());
+    return () => {};
+  }
+
+  const es = new EventSource(url);
+  es.onmessage = (e) => {
+    try { onUpdate(JSON.parse(e.data) as RunStatus); } catch { /* ignore */ }
+  };
+  es.onerror = () => {
+    es.close();
+    onError?.();
+  };
+  return () => es.close();
+}
+
 // ── Reports ─────────────────────────────────────────────────────────────────
 
 export async function getReport(

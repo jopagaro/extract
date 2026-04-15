@@ -83,6 +83,7 @@ import {
   getProjectJurisdictionRisk,
   getProjectNews,
   getRun,
+  streamRunStatus,
   getResourceSummary,
   getRoyaltySummary,
   ingestUrl,
@@ -329,7 +330,7 @@ export default function ProjectDetailPage() {
   const [royaltyLoading, setRoyaltyLoading] = useState(false);
   const [royaltyForm, setRoyaltyForm] = useState<Partial<Royalty>>({ royalty_type: "NSR", buyback_option: false });
   const [showRename, setShowRename] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopStreamRef = useRef<(() => void) | null>(null);
 
   const id = projectId!;
 
@@ -358,48 +359,49 @@ export default function ProjectDetailPage() {
     }).catch(() => {
       toast("Could not load project", "error");
     });
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    return () => { stopStreamRef.current?.(); };
   }, [id]);
 
-  // Poll active run for status updates
-  function startPolling(runId: string) {
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(async () => {
-      try {
-        const updated = await getRun(id, runId);
-        setRuns((prev) => prev.map((r) => r.run_id === runId ? updated : r));
-        if (updated.status === "complete" || updated.status === "failed") {
-          clearInterval(pollRef.current!);
-          setAnalyzing(false);
-          if (updated.status === "complete") {
-            toast("Analysis complete! View your report.", "success");
-            // Switch to Details tab so the user sees the extracted data and checks
-            setActiveTab("details");
-            // Refresh extracted data — resources/royalties/comparables are written during the run
-            Promise.all([
-              listResources(id),
-              getResourceSummary(id),
-              listRoyalties(id),
-              getRoyaltySummary(id),
-              listComparables(id),
-            ]).then(([res, resSummary, roy, roySummary, comps]) => {
-              setResources(res);
-              setResourceSummary(resSummary);
-              setRoyaltyList(roy);
-              setRoyaltySummary(roySummary);
-              setComps(comps);
-            }).catch(() => {/* non-fatal */});
-            // Re-run sanity checks against the freshly extracted data
-            runSanityCheck(id).then(setSanity).catch(() => {/* non-fatal */});
-          } else {
-            toast(`Analysis failed: ${updated.error ?? "Unknown error"}`, "error");
-          }
-        }
-      } catch {
-        clearInterval(pollRef.current!);
+  // Stream live run status updates via SSE (replaces polling)
+  function startStreaming(runId: string) {
+    stopStreamRef.current?.();
+    stopStreamRef.current = null;
+
+    function handleUpdate(updated: RunStatus) {
+      setRuns((prev) => prev.map((r) => r.run_id === runId ? updated : r));
+      if (updated.status === "complete" || updated.status === "failed") {
+        stopStreamRef.current?.();
+        stopStreamRef.current = null;
         setAnalyzing(false);
+        if (updated.status === "complete") {
+          toast("Analysis complete! View your report.", "success");
+          setActiveTab("details");
+          Promise.all([
+            listResources(id),
+            getResourceSummary(id),
+            listRoyalties(id),
+            getRoyaltySummary(id),
+            listComparables(id),
+          ]).then(([res, resSummary, roy, roySummary, comps]) => {
+            setResources(res);
+            setResourceSummary(resSummary);
+            setRoyaltyList(roy);
+            setRoyaltySummary(roySummary);
+            setComps(comps);
+          }).catch(() => {/* non-fatal */});
+          runSanityCheck(id).then(setSanity).catch(() => {/* non-fatal */});
+        } else {
+          toast(`Analysis failed: ${updated.error ?? "Unknown error"}`, "error");
+        }
       }
-    }, 2000);
+    }
+
+    streamRunStatus(id, runId, handleUpdate, () => {
+      // SSE connection dropped — fall back to a single fetch to get final state
+      getRun(id, runId).then(handleUpdate).catch(() => setAnalyzing(false));
+    }).then((stop) => {
+      stopStreamRef.current = stop;
+    });
   }
 
   async function handleUpload(newFiles: File[]) {
@@ -810,7 +812,7 @@ export default function ProjectDetailPage() {
       const run = await startAnalysis(id);
       setRuns((prev) => [run, ...prev]);
       setActiveTab("details");
-      startPolling(run.run_id);
+      startStreaming(run.run_id);
       toast("Analysis started — this may take 1–3 minutes", "info");
     } catch (err: unknown) {
       toast((err as Error).message ?? "Failed to start analysis", "error");

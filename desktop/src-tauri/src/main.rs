@@ -203,16 +203,26 @@ To build the desktop app: from the project root run `./scripts/build_sidecar.sh`
                 );
             }
 
-            // Give the server time to bind before the webview tries to connect
-            thread::sleep(Duration::from_millis(1200));
+            // Probe the chosen port every 100 ms until the server responds,
+            // up to 10 seconds.  This replaces the old hardcoded 1.2 s sleep
+            // and handles slow cold starts on Windows / older hardware.
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            let mut server_ready = false;
+            while std::time::Instant::now() < deadline {
+                if std::net::TcpStream::connect_timeout(
+                    &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+                    Duration::from_millis(100),
+                ).is_ok() {
+                    server_ready = true;
+                    println!("[Extract] API server ready on port {port}");
+                    break;
+                }
+                thread::sleep(Duration::from_millis(100));
+            }
 
-            // If the sidecar didn't start on `port` but something is already
-            // serving on 8000 (e.g. a terminal dev uvicorn), use that instead
-            // so the UI can reach the API.
-            let effective_port = if std::net::TcpStream::connect_timeout(
-                &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
-                Duration::from_millis(300),
-            ).is_ok() {
+            // If our sidecar never came up but port 8000 has a server
+            // (e.g. a dev terminal uvicorn), fall back to that.
+            let effective_port = if server_ready {
                 port
             } else if port != 8000 && std::net::TcpStream::connect_timeout(
                 &std::net::SocketAddr::from(([127, 0, 0, 1], 8000)),
@@ -222,6 +232,9 @@ To build the desktop app: from the project root run `./scripts/build_sidecar.sh`
                 let _ = std::fs::write(data_dir.join("api.port"), "8000");
                 8000u16
             } else {
+                if !server_ready {
+                    println!("[Extract] Warning: API server did not respond within 10 s");
+                }
                 port
             };
 
