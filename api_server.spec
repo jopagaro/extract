@@ -1,14 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
 #
-# PyInstaller spec for the Extract API server sidecar.
+# PyInstaller spec — Extract API server (BASE bundle).
 #
-# Build with:
+# Includes: PDF, DOCX, XLSX, CSV, TXT, PNG/JPG, DXF/DWG
+# Excludes: OCP/CADVERT (CAD pack), VTK/pyvista (Geology pack)
+#
+# Build:
 #   pyinstaller api_server.spec
 #
-# Output: dist/api-server/  (one-directory bundle)
+# For the CAD Analysis Pack:
+#   pyinstaller api_server_cad.spec
 #
-# After building, the build script copies this directory to
-# desktop/src-tauri/binaries/api-server/ for Tauri to bundle.
+# Output: dist/api-server/
+# Copy to desktop/src-tauri/binaries/api-server/ for Tauri.
 
 from pathlib import Path
 
@@ -65,6 +69,13 @@ a = Analysis(
         "engine.llm.extraction.extract_project_facts",
         "engine.llm.extraction.extract_economic_assumptions",
         "engine.llm.extraction.extract_mine_plan_inputs",
+        "engine.llm.tools",
+        "engine.llm.tools.schemas",
+        "engine.llm.tools.extractor",
+        "engine.llm.tools.economics",
+        "engine.llm.tools.executor",
+        "engine.core.capabilities",
+        "api.routers.capabilities",
         "engine.llm.extraction.extract_metallurgy",
         "engine.llm.extraction.extract_permitting",
         "engine.llm.extraction.extract_operator_track_record",
@@ -172,6 +183,18 @@ a = Analysis(
     excludes=[
         "tkinter",
         "pytest",
+        # ── CAD Analysis Pack — excluded from base build (~221MB) ──
+        "OCP",
+        "cadvert",
+        "cadquery",
+        "cadquery_ocp",
+        # ── Geology 3D Pack — excluded from base build (~380MB) ──
+        "vtkmodules",
+        "vtk",
+        "pyvista",
+        "omf",
+        "pooch",
+        "scooby",
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

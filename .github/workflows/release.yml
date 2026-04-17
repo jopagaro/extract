@@ -9,7 +9,54 @@ permissions:
   contents: write
 
 jobs:
-  build:
+
+  # ── 1. Create the GitHub release (empty, so both build jobs can upload to it) ─
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create.outputs.release_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create release
+        id: create
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          RELEASE_ID=$(gh release create "$TAG" \
+            --title "Extract $TAG" \
+            --notes "$(cat <<'EOF'
+          ## Extract ${{ github.ref_name }}
+
+          ### Download
+
+          **Extract** — PDF, Word, Excel, CSV, images, DXF/DWG (~150 MB)
+
+          | Platform | Link |
+          |---|---|
+          | macOS Apple Silicon | `Extract_aarch64.dmg` |
+          | macOS Intel         | `Extract_x64.dmg` |
+          | Windows x64         | `Extract_x64-setup.exe` |
+
+          **Extract + CAD Pack** — everything above plus STEP/IGES/BREP, OMF, VTK (~600 MB)
+
+          | Platform | Link |
+          |---|---|
+          | macOS Apple Silicon | `Extract-CAD_aarch64.dmg` |
+          | macOS Intel         | `Extract-CAD_x64.dmg` |
+          | Windows x64         | `Extract-CAD_x64-setup.exe` |
+
+          Requires your own OpenAI API key (set in Settings after first launch).
+          EOF
+          )" \
+            --json id --jq '.id')
+          echo "release_id=$RELEASE_ID" >> $GITHUB_OUTPUT
+
+
+  # ── 2. Base build — PDF/Word/Excel/images/DXF (~150 MB) ──────────────────────
+  build-base:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -44,7 +91,7 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install macOS Rust target
+      - name: Add macOS Rust target
         if: runner.os == 'macOS'
         run: rustup target add ${{ matrix.target }}
 
@@ -56,14 +103,14 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt pyinstaller
 
-      - name: Build Python sidecar (macOS)
+      - name: Build base Python sidecar (macOS)
         if: runner.os == 'macOS'
         run: |
           pyinstaller api_server.spec
           mkdir -p desktop/src-tauri/binaries/api-server
           cp -r dist/api-server/ desktop/src-tauri/binaries/api-server/
 
-      - name: Build Python sidecar (Windows)
+      - name: Build base Python sidecar (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -74,41 +121,195 @@ jobs:
       - name: Install frontend deps
         run: pnpm install
 
-      - name: Build Tauri app
+      - name: Build Tauri app (base)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: desktop
-          tagName: ${{ github.ref_name }}
-          releaseName: Extract ${{ github.ref_name }}
-          releaseBody: |
-            Download Extract for macOS or Windows below.
-
-            **macOS (Apple Silicon):** `Extract_*_aarch64.dmg`
-            **macOS (Intel):** `Extract_*_x64.dmg`
-            **Windows:** `Extract_*_x64-setup.exe`
-          releaseDraft: false
-          prerelease: false
+          releaseId: ${{ needs.create-release.outputs.release_id }}
           args: --target ${{ matrix.target }}
 
+      - name: Upload versionless download alias (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          VER="${TAG#v}"
+          # Find the built .dmg (version comes from tauri.conf.json patched by tauri-action)
+          DMG=$(find desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg \
+                  -name "Extract_*.dmg" | head -1)
+          if [ -n "$DMG" ]; then
+            ALIAS="Extract_${{ matrix.suffix }}"
+            cp "$DMG" "$ALIAS"
+            gh release upload "$TAG" "$ALIAS" --clobber
+          fi
+
+      - name: Upload versionless download alias (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $TAG = "${{ github.ref_name }}"
+          $EXE = Get-ChildItem -Path "desktop\src-tauri\target\${{ matrix.target }}\release\bundle\nsis" `
+                   -Filter "Extract_*.exe" | Select-Object -First 1 -ExpandProperty FullName
+          if ($EXE) {
+            Copy-Item $EXE "Extract_${{ matrix.suffix }}"
+            gh release upload $TAG "Extract_${{ matrix.suffix }}" --clobber
+          }
+
+
+  # ── 3. CAD+ build — everything + STEP/IGES/BREP + OMF/VTK (~600 MB) ─────────
+  #
+  # CADVERT library (core, no server/LLM extras) installed directly from its public repo.
+  # OCP wheels (~200MB) pulled from PyPI automatically.
+  # If the CAD build fails for any reason, the base release still ships normally.
+  build-cad:
+    needs: create-release
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            suffix: aarch64.dmg
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            suffix: x64.dmg
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            suffix: x64-setup.exe
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check prerequisites
+        id: prereq
+        shell: bash
+        run: echo "skip=false" >> $GITHUB_OUTPUT
+
+      - name: Setup Node
+        if: steps.prereq.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        if: steps.prereq.outputs.skip != 'true'
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Install Rust
+        if: steps.prereq.outputs.skip != 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Add macOS Rust target
+        if: steps.prereq.outputs.skip != 'true' && runner.os == 'macOS'
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Setup Python
+        if: steps.prereq.outputs.skip != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install base Python dependencies
+        if: steps.prereq.outputs.skip != 'true'
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Install CAD Python dependencies
+        if: steps.prereq.outputs.skip != 'true'
+        shell: bash
+        run: |
+          pip install OCP
+          pip install git+https://github.com/jopagaro/CADVERT.git
+
+      - name: Build CAD Python sidecar (macOS)
+        if: steps.prereq.outputs.skip != 'true' && runner.os == 'macOS'
+        run: |
+          pyinstaller api_server_cad.spec
+          mkdir -p desktop/src-tauri/binaries/api-server
+          cp -r dist/api-server-cad/ desktop/src-tauri/binaries/api-server/
+
+      - name: Build CAD Python sidecar (Windows)
+        if: steps.prereq.outputs.skip != 'true' && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          pyinstaller api_server_cad.spec
+          New-Item -ItemType Directory -Force -Path desktop\src-tauri\binaries\api-server
+          Copy-Item -Recurse -Force dist\api-server-cad\* desktop\src-tauri\binaries\api-server\
+
+      - name: Patch product name to Extract-CAD
+        if: steps.prereq.outputs.skip != 'true'
+        shell: python
+        run: |
+          import json, pathlib
+          conf = pathlib.Path('desktop/src-tauri/tauri.conf.json')
+          data = json.loads(conf.read_text())
+          data['package']['productName'] = 'Extract-CAD'
+          conf.write_text(json.dumps(data, indent=2))
+
+      - name: Install frontend deps
+        if: steps.prereq.outputs.skip != 'true'
+        run: pnpm install
+
+      - name: Build Tauri app (CAD+)
+        if: steps.prereq.outputs.skip != 'true'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: desktop
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          args: --target ${{ matrix.target }}
+
+      - name: Upload versionless download alias (macOS)
+        if: steps.prereq.outputs.skip != 'true' && runner.os == 'macOS'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          DMG=$(find desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg \
+                  -name "Extract-CAD_*.dmg" | head -1)
+          if [ -n "$DMG" ]; then
+            ALIAS="Extract-CAD_${{ matrix.suffix }}"
+            cp "$DMG" "$ALIAS"
+            gh release upload "$TAG" "$ALIAS" --clobber
+          fi
+
+      - name: Upload versionless download alias (Windows)
+        if: steps.prereq.outputs.skip != 'true' && runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $TAG = "${{ github.ref_name }}"
+          $EXE = Get-ChildItem -Path "desktop\src-tauri\target\${{ matrix.target }}\release\bundle\nsis" `
+                   -Filter "Extract-CAD_*.exe" | Select-Object -First 1 -ExpandProperty FullName
+          if ($EXE) {
+            Copy-Item $EXE "Extract-CAD_${{ matrix.suffix }}"
+            gh release upload $TAG "Extract-CAD_${{ matrix.suffix }}" --clobber
+          }
+
+
+  # ── 4. Publish Tauri updater manifest (base edition only) ────────────────────
   publish-update-manifest:
-    needs: build
+    needs: build-base
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download release assets list
-        id: assets
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ github.ref_name }}"
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          ASSETS=$(gh release view "$VERSION" --json assets --jq '.assets[].name' 2>/dev/null || echo "")
-          echo "Assets: $ASSETS"
-
-      - name: Generate latest.json
+      - name: Generate and upload latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -117,14 +318,16 @@ jobs:
           BASE_URL="https://github.com/$REPO/releases/download/$VERSION"
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          # Fetch signatures from release
           get_sig() {
-            gh release download "$VERSION" -p "$1" -D /tmp 2>/dev/null && cat "/tmp/$1" || echo ""
+            gh release download "$VERSION" -p "$1" -D /tmp 2>/dev/null \
+              && cat "/tmp/$1" || echo ""
           }
 
-          SIG_ARM=$(get_sig "Extract_${VERSION#v}_aarch64.dmg.sig")
-          SIG_X64=$(get_sig "Extract_${VERSION#v}_x64.dmg.sig")
-          SIG_WIN=$(get_sig "Extract_${VERSION#v}_x64-setup.exe.sig")
+          # Signatures use versioned filenames (tauri-action uploads .sig alongside each bundle)
+          VER="${VERSION#v}"
+          SIG_ARM=$(get_sig "Extract_${VER}_aarch64.dmg.sig")
+          SIG_X64=$(get_sig "Extract_${VER}_x64.dmg.sig")
+          SIG_WIN=$(get_sig "Extract_${VER}_x64-setup.exe.sig")
 
           cat > latest.json <<EOF
           {
@@ -134,23 +337,18 @@ jobs:
             "platforms": {
               "darwin-aarch64": {
                 "signature": "$SIG_ARM",
-                "url": "$BASE_URL/Extract_${VERSION#v}_aarch64.dmg"
+                "url": "$BASE_URL/Extract_${VER}_aarch64.dmg"
               },
               "darwin-x86_64": {
                 "signature": "$SIG_X64",
-                "url": "$BASE_URL/Extract_${VERSION#v}_x64.dmg"
+                "url": "$BASE_URL/Extract_${VER}_x64.dmg"
               },
               "windows-x86_64": {
                 "signature": "$SIG_WIN",
-                "url": "$BASE_URL/Extract_${VERSION#v}_x64-setup.exe"
+                "url": "$BASE_URL/Extract_${VER}_x64-setup.exe"
               }
             }
           }
           EOF
-          cat latest.json
 
-      - name: Upload latest.json to release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload "${{ github.ref_name }}" latest.json --clobber
+          gh release upload "$VERSION" latest.json --clobber

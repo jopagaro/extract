@@ -9,11 +9,14 @@ Supported formats:
   .png / .jpg / .jpeg / .tiff — image described by Claude vision API
   .dxf                — layer names, text entities, dimensions via ezdxf
   .dwg                — attempted via ezdxf; returns None if unreadable
+  .step / .stp / .iges / .igs / .brep — 3D solid models via CADVERT:
+                        exact B-REP geometry, slope angles, volumes, feature detection
+                        (pip install -e /path/to/CADVERT required)
   .omf                — Open Mining Format: block model stats + wireframe geometry
                         via omf + pyvista; renders saved to save_render_dir
   .vtk / .vtu         — VTK scientific volume data via pyvista; 3D perspective render
-  .obj / .stl         — 3D mesh geometry via pyvista; renders from 3 angles
-                        (no grade data — geometry description only)
+  .obj / .stl         — 3D mesh geometry via CADVERT (geometry + spatial relationships)
+                        Falls back to pyvista if CADVERT is not installed.
 """
 
 from __future__ import annotations
@@ -61,6 +64,9 @@ def load_document(file_path: Path, save_render_dir: Path | None = None) -> str |
         )
         return _extract_cad(file_path, save_render_path=render_path)
 
+    if suffix in {".step", ".stp", ".iges", ".igs", ".brep"}:
+        return _extract_cad_cadvert(file_path)
+
     if suffix == ".omf":
         renders_dir = save_render_dir or (file_path.parent.parent / "normalized" / "renders")
         return _extract_omf(file_path, renders_dir)
@@ -71,6 +77,9 @@ def load_document(file_path: Path, save_render_dir: Path | None = None) -> str |
 
     if suffix in {".obj", ".stl"}:
         renders_dir = save_render_dir or (file_path.parent.parent / "normalized" / "renders")
+        cadvert_result = _extract_mesh_cadvert(file_path)
+        if cadvert_result:
+            return cadvert_result
         return _extract_mesh(file_path, renders_dir)
 
     return None
@@ -362,6 +371,100 @@ def _render_cad_visual(doc: object, path: Path, save_path: Path | None = None) -
 
         return f"[CAD Visual Description]\n{description}"
 
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# STEP / IGES / BREP — 3D solid models via CADVERT
+# ---------------------------------------------------------------------------
+
+def _extract_cad_cadvert(path: Path) -> str:
+    """
+    Extract exact analytical geometry from a 3D solid model using CADVERT.
+
+    Produces a Hierarchical Spatial Document (HSD) with:
+    - Bounding box, volume, surface area
+    - Face geometry (planes, cylinders, cones — exact slope angles)
+    - Detected features: drill holes, bosses, pockets, fillets
+    - Spatial relationships: pit depth, bench widths, wall clearances, slope angles
+
+    This replaces the vision-API image description path for solid model formats.
+    Requires: pip install -e /path/to/CADVERT
+    """
+    try:
+        from cadvert.ingest import load_step
+        from cadvert.topology import build_topology
+        from cadvert.features import detect_features
+        from cadvert.spatial import compute_spatial_relationships
+        from cadvert.document import render_tier0, assign_feature_ids
+    except ImportError:
+        return (
+            f"[CAD Solid: {path.name}]\n"
+            f"NOTE: CADVERT is not installed — install with:\n"
+            f"  pip install -e /path/to/CADVERT\n"
+            f"Without CADVERT, STEP/IGES/BREP files cannot be analysed."
+        )
+
+    try:
+        shape, body_count, metadata = load_step(str(path))
+    except Exception as exc:
+        return f"[CAD Solid: {path.name} — could not be loaded: {exc}]"
+
+    try:
+        if metadata.is_mesh:
+            tier0 = render_tier0(
+                None, str(path),
+                units=metadata.units,
+                mesh_info={
+                    "triangle_count": metadata.triangle_count,
+                    "source_format": metadata.source_format,
+                },
+            )
+        else:
+            graph = build_topology(shape, body_count)
+            features = detect_features(graph)
+            feature_ids = assign_feature_ids(features)
+            spatial = compute_spatial_relationships(graph, features, shape=shape)
+            tier0 = render_tier0(
+                graph, str(path),
+                feature_ids=feature_ids,
+                features=features,
+                spatial=spatial,
+                units=metadata.units,
+                gdt_annotations=metadata.gdt_annotations or [],
+            )
+
+        return f"[CAD Solid: {path.name} | Format: {metadata.source_format} | Units: {metadata.units}]\n\n{tier0}"
+
+    except Exception as exc:
+        return f"[CAD Solid: {path.name} — analysis failed: {exc}]"
+
+
+def _extract_mesh_cadvert(path: Path) -> str | None:
+    """
+    Attempt CADVERT mesh analysis for OBJ/STL files.
+
+    Returns None if CADVERT is not installed so the caller can fall back
+    to the pyvista path.
+    """
+    try:
+        from cadvert.ingest import load_step
+        from cadvert.document import render_tier0
+    except ImportError:
+        return None
+
+    try:
+        shape, body_count, metadata = load_step(str(path))
+        tier0 = render_tier0(
+            None, str(path),
+            units=metadata.units,
+            mesh_info={
+                "triangle_count": metadata.triangle_count,
+                "source_format": metadata.source_format,
+            },
+        )
+        return f"[3D Mesh: {path.name} | Format: {metadata.source_format}]\n\n{tier0}"
     except Exception:
         return None
 

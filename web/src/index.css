@@ -538,6 +538,87 @@ body {
   color: var(--text-secondary);
   font-family: "SF Mono", "Fira Mono", monospace;
 }
+.format-chip--locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0.55;
+  cursor: pointer;
+  border-style: dashed;
+  transition: opacity 0.15s;
+}
+.format-chip--locked:hover {
+  opacity: 0.85;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ─── Upgrade Modal ─────────────────────────────────────────────────────── */
+.upgrade-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.upgrade-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+}
+.upgrade-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.upgrade-modal-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+.upgrade-modal-formats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.upgrade-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+.upgrade-modal-cta {
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius);
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+.upgrade-modal-cta:hover { opacity: 0.85; }
+.upgrade-modal-dismiss {
+  background: none;
+  border: none;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 0;
+}
+.upgrade-modal-dismiss:hover { color: var(--text-secondary); }
 
 /* ─── File List ────────────────────────────────────────────────────────── */
 .file-list { display: flex; flex-direction: column; gap: 1px; }

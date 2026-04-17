@@ -613,53 +613,69 @@ def _run_analysis_in_background(project_id: str, run_id: str) -> None:
             from engine.economics.input_builder import build_input_book_from_llm
             from engine.economics.dcf_model import run_dcf
             from engine.economics.sensitivity_runner import run_sensitivity
+            from engine.llm.tools.economics import execute_check_dcf_readiness
 
-            # Load metallurgy data if extracted — overrides the 90% default recovery
-            _met_override: dict | None = None
-            try:
-                _met_path = project_root(project_id) / "normalized" / "metadata" / "metallurgy.json"
-                if _met_path.exists():
-                    _met_override = json.loads(_met_path.read_text())
-            except Exception:
-                pass
+            # Gate the DCF on a readiness check — avoids hollow model runs when
+            # the source documents don't contain production schedule or cost data.
+            readiness = execute_check_dcf_readiness({
+                "economic_assumptions": econ_assumptions,
+                "mine_plan": mine_plan,
+                "project_facts": facts,
+            })
 
-            input_book = build_input_book_from_llm(
-                project_id=project_id,
-                economic_assumptions=econ_assumptions,
-                mine_plan=mine_plan,
-                project_facts=facts,
-                metallurgy=_met_override,
-            )
-            if input_book:
-                cash_flows, summary = run_dcf(input_book)
-                sensitivity = run_sensitivity(input_book)
-
-                # Surface any defaults that were used — analysts must know which
-                # inputs were assumed rather than extracted from the study
-                defaults_used = [n for n in (input_book.notes or []) if "default" in n.lower()]
-                dcf_output = {
-                    "model_ran": True,
-                    "assumptions_notes": input_book.notes,
-                    "defaults_used": defaults_used,
-                    "defaults_warning": (
-                        f"{len(defaults_used)} input(s) used assumed defaults rather than "
-                        "values extracted from the study documents: "
-                        + "; ".join(defaults_used)
-                    ) if defaults_used else None,
-                    "summary": summary.to_dict(),
-                    "cash_flow_table": [dataclasses.asdict(cf) for cf in cash_flows],
-                    "sensitivity": sensitivity.to_dict(),
-                }
-            else:
+            if not readiness.get("can_run_dcf"):
                 dcf_output = {
                     "model_ran": False,
-                    "reason": "Insufficient data to build economics model from source documents.",
+                    "reason": readiness.get("recommendation", "Insufficient data for DCF model."),
+                    "missing_inputs": readiness.get("missing", []),
                     "hint": (
                         "The DCF model requires a production schedule (annual ore tonnes + grade), "
                         "capital cost estimate, operating cost, and commodity price assumption. "
                         "Check that the uploaded documents contain these sections."
                     ),
                 }
+            else:
+                # Load metallurgy data if extracted — overrides the 90% default recovery
+                _met_override: dict | None = None
+                try:
+                    _met_path = project_root(project_id) / "normalized" / "metadata" / "metallurgy.json"
+                    if _met_path.exists():
+                        _met_override = json.loads(_met_path.read_text())
+                except Exception:
+                    pass
+
+                input_book = build_input_book_from_llm(
+                    project_id=project_id,
+                    economic_assumptions=econ_assumptions,
+                    mine_plan=mine_plan,
+                    project_facts=facts,
+                    metallurgy=_met_override,
+                )
+                if input_book:
+                    cash_flows, summary = run_dcf(input_book)
+                    sensitivity = run_sensitivity(input_book)
+
+                    defaults_used = [n for n in (input_book.notes or []) if "default" in n.lower()]
+                    dcf_output = {
+                        "model_ran": True,
+                        "assumptions_notes": input_book.notes,
+                        "defaults_used": defaults_used,
+                        "defaults_warning": (
+                            f"{len(defaults_used)} input(s) used assumed defaults rather than "
+                            "values extracted from the study documents: "
+                            + "; ".join(defaults_used)
+                        ) if defaults_used else None,
+                        "readiness": readiness,
+                        "summary": summary.to_dict(),
+                        "cash_flow_table": [dataclasses.asdict(cf) for cf in cash_flows],
+                        "sensitivity": sensitivity.to_dict(),
+                    }
+                else:
+                    dcf_output = {
+                        "model_ran": False,
+                        "reason": "Input book construction failed despite passing readiness check.",
+                        "readiness": readiness,
+                    }
         except Exception as dcf_exc:
             import traceback
             dcf_output = {
