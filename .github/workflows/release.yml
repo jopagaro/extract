@@ -230,8 +230,7 @@ jobs:
         if: steps.prereq.outputs.skip != 'true'
         shell: bash
         run: |
-          pip install OCP
-          pip install git+https://github.com/jopagaro/CADVERT.git
+          pip install OCP cadvert
 
       - name: Build CAD Python sidecar (macOS)
         if: steps.prereq.outputs.skip != 'true' && runner.os == 'macOS'
