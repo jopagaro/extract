@@ -24,33 +24,20 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ github.ref_name }}"
-          RELEASE_ID=$(gh release create "$TAG" \
-            --title "Extract $TAG" \
-            --notes "$(cat <<'EOF'
-          ## Extract ${{ github.ref_name }}
 
-          ### Download
+          gh release create "$TAG" \
+            --title "Extract $TAG" \
+            --notes "## Extract $TAG
 
           **Extract** — PDF, Word, Excel, CSV, images, DXF/DWG (~150 MB)
-
-          | Platform | Link |
-          |---|---|
-          | macOS Apple Silicon | `Extract_aarch64.dmg` |
-          | macOS Intel         | `Extract_x64.dmg` |
-          | Windows x64         | `Extract_x64-setup.exe` |
+          macOS Apple Silicon: \`Extract_aarch64.dmg\`  |  macOS Intel: \`Extract_x64.dmg\`  |  Windows: \`Extract_x64-setup.exe\`
 
           **Extract + CAD Pack** — everything above plus STEP/IGES/BREP, OMF, VTK (~600 MB)
+          macOS Apple Silicon: \`Extract-CAD_aarch64.dmg\`  |  macOS Intel: \`Extract-CAD_x64.dmg\`  |  Windows: \`Extract-CAD_x64-setup.exe\`
 
-          | Platform | Link |
-          |---|---|
-          | macOS Apple Silicon | `Extract-CAD_aarch64.dmg` |
-          | macOS Intel         | `Extract-CAD_x64.dmg` |
-          | Windows x64         | `Extract-CAD_x64-setup.exe` |
+          Requires your own OpenAI API key (set in Settings after first launch)."
 
-          Requires your own OpenAI API key (set in Settings after first launch).
-          EOF
-          )" \
-            --json id --jq '.id')
+          RELEASE_ID=$(gh release view "$TAG" --json id --jq '.id')
           echo "release_id=$RELEASE_ID" >> $GITHUB_OUTPUT
 
 
