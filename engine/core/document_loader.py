@@ -165,9 +165,18 @@ def _extract_docx(path: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Images — described by Claude vision
+# Images — described by vision API
 # ---------------------------------------------------------------------------
 
+# Keywords in filenames that suggest satellite / aerial / drone imagery
+_AERIAL_KEYWORDS = {
+    "satellite", "aerial", "drone", "uav", "uas", "sat", "scene",
+    "landsat", "sentinel", "worldview", "planet", "rapideye", "spot",
+    "naip", "imagery", "ortho", "rgb", "band", "tile", "mosaic",
+    "overview", "survey", "lidar", "sar", "dem", "dsm", "dtm",
+}
+
+# General technical document prompt (diagrams, cross-sections, plans, tables)
 _IMAGE_PROMPT = (
     "This image is from a mining project technical document. "
     "Describe in technical detail what you see — including any "
@@ -178,6 +187,69 @@ _IMAGE_PROMPT = (
     "figures. Extract any visible numbers, labels, coordinates, "
     "scale bars, legends, or annotations. Be as specific as possible."
 )
+
+# Satellite / aerial / drone imagery prompt — physical site feature analysis
+_AERIAL_PROMPT = """This is a satellite, aerial, or drone image of a mining operation or exploration site.
+Analyse it as an experienced mining geologist and remote sensing interpreter would.
+
+FIRST — identify the image type:
+State whether this appears to be a satellite image, drone/UAV photograph, aerial survey, or ground-level photograph, and estimate the approximate spatial resolution and coverage area if discernible.
+
+SECOND — classify the operation type:
+Determine whether this looks like an industrial-scale operation, junior/advanced exploration, or artisanal and small-scale mining (ASM). Note any indicators of formality or informality in the operation.
+
+THIRD — describe all visible physical features systematically:
+
+Excavation and mining works:
+- Open pit geometry, dimensions, bench structure, highwall angles
+- Underground portal locations, decline portals, ventilation raises
+- Artisanal workings — small irregular pits, alluvial diggings, river dredging, shaft collars
+- Extent and pattern of ground disturbance
+
+Processing and infrastructure:
+- Mill buildings, crusher structures, processing plant footprint
+- Heap leach pads — liner visible, cell layout, solution ponds
+- Tailings storage facilities — dam geometry, freeboard, decant ponds, seepage indicators
+- Stockpiles — ore, waste rock, low-grade material (note colour differences)
+- Wash plants, sluice systems, jig concentrators (ASM context)
+- Reagent storage, fuel tanks, power infrastructure
+
+Water and environment:
+- Process water ponds, tailings pond water colour (note any unusual colouration suggesting reagent discharge)
+- Sediment plumes in nearby rivers or water bodies — note colour and extent
+- Mercury amalgamation ponds (ASM — look for small bright ponds near processing areas)
+- River turbidity or bank disturbance from alluvial workings
+- Vegetation clearance extent and pattern
+- Erosion features, gully formation on waste dumps or tailings
+
+Access and logistics:
+- Road network — haul roads, access roads, condition, width
+- Airstrip or helicopter pad
+- Port or barge loading infrastructure if coastal/riverine
+- Camp and accommodation footprint
+- Community or settlement proximity
+
+Geological indicators:
+- Colour anomalies in exposed rock suggesting lithology or alteration
+- Gossan, oxide zones, leached caps visible at surface
+- Linear features suggesting structural control (faults, dykes, veins)
+- Alluvial channels and terrace systems (placer potential)
+- Topographic expression of mineralised systems
+
+Scale and context:
+- Estimate operational scale relative to visible infrastructure
+- Note any apparent expansion areas, brownfield development, or reclaimed areas
+- Flag anything that suggests environmental, safety, or regulatory concerns
+
+Extract any visible text, coordinates, scale bars, north arrows, or date/time stamps.
+Be factual and specific. Flag uncertainty where image resolution limits interpretation."""
+
+
+def _is_aerial_image(path: Path) -> bool:
+    """Return True if the filename suggests satellite / aerial / drone imagery."""
+    stem_lower = path.stem.lower()
+    return any(kw in stem_lower for kw in _AERIAL_KEYWORDS)
+
 
 _MIME_MAP = {
     ".jpg": "image/jpeg",
@@ -192,27 +264,31 @@ _MIME_MAP = {
 def _extract_image(path: Path) -> str:
     mime_type = _MIME_MAP.get(path.suffix.lower(), "image/jpeg")
     image_data = base64.standard_b64encode(path.read_bytes()).decode("utf-8")
+    prompt = _AERIAL_PROMPT if _is_aerial_image(path) else _IMAGE_PROMPT
 
     anthropic_key = os.getenv("ANTHROPIC_API_KEY")
     openai_key = os.getenv("OPENAI_API_KEY")
 
     if anthropic_key:
-        description = _describe_image_anthropic(image_data, mime_type, anthropic_key)
+        description = _describe_image_anthropic(image_data, mime_type, anthropic_key, prompt)
     elif openai_key:
-        description = _describe_image_openai(image_data, mime_type, openai_key)
+        description = _describe_image_openai(image_data, mime_type, openai_key, prompt)
     else:
         return f"[Image: {path.name} — no API key set, image could not be described]"
 
-    return f"[Image: {path.name}]\n{description}"
+    image_type = "Aerial/Satellite Image" if _is_aerial_image(path) else "Image"
+    return f"[{image_type}: {path.name}]\n{description}"
 
 
-def _describe_image_anthropic(image_data: str, mime_type: str, api_key: str) -> str:
+def _describe_image_anthropic(image_data: str, mime_type: str, api_key: str, prompt: str = _IMAGE_PROMPT) -> str:
     import anthropic
 
     client = anthropic.Anthropic(api_key=api_key)
+    # Aerial prompts are long — give the model more room to respond
+    max_tokens = 2048 if prompt is _AERIAL_PROMPT else 1024
     response = client.messages.create(
         model="claude-opus-4-6",
-        max_tokens=1024,
+        max_tokens=max_tokens,
         messages=[{
             "role": "user",
             "content": [
@@ -224,24 +300,25 @@ def _describe_image_anthropic(image_data: str, mime_type: str, api_key: str) -> 
                         "data": image_data,
                     },
                 },
-                {"type": "text", "text": _IMAGE_PROMPT},
+                {"type": "text", "text": prompt},
             ],
         }],
     )
     return response.content[0].text.strip()
 
 
-def _describe_image_openai(image_data: str, mime_type: str, api_key: str) -> str:
+def _describe_image_openai(image_data: str, mime_type: str, api_key: str, prompt: str = _IMAGE_PROMPT) -> str:
     from openai import OpenAI
 
     client = OpenAI(api_key=api_key)
+    max_tokens = 2048 if prompt is _AERIAL_PROMPT else 1024
     response = client.chat.completions.create(
-        model="gpt-5.4",
-        max_tokens=1024,
+        model="gpt-4o",
+        max_tokens=max_tokens,
         messages=[{
             "role": "user",
             "content": [
-                {"type": "text", "text": _IMAGE_PROMPT},
+                {"type": "text", "text": prompt},
                 {
                     "type": "image_url",
                     "image_url": {
